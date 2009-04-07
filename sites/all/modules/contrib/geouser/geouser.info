@@ -1,0 +1,12 @@
+; $Id
+name = GeoUser
+description = Retrieve user's geographic information based on her ip address, and display a yahoo map on user page.
+version = VERSION
+core = 6.x
+package = GeoUser
+; Information added by drupal.org packaging script on 2009-02-26
+version = "6.x-1.7-beta7"
+core = "6.x"
+project = "geouser"
+datestamp = "1235636727"
+

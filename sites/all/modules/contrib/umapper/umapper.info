@@ -1,0 +1,11 @@
+; $Id: umapper.info,v 1.1 2009/03/02 03:01:23 aaronott Exp $
+name = Umapper
+description = An implementation of the Umapper API allowing you to add maps to your nodes.
+core = 6.x
+
+; Information added by drupal.org packaging script on 2009-03-22
+version = "6.x-1.1"
+core = "6.x"
+project = "umapper"
+datestamp = "1237692960"
+

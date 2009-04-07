@@ -1,0 +1,45 @@
+<?php
+function node2node_schema() {
+   $schema['node2node'] = array(
+      'description' => t('Determines parent child relationships.'),
+      'fields' => array(
+            'parent_nid' => array(
+            'description' => t('Identifies the parent node.'),
+            'type' => 'int',
+            'unsigned' => TRUE,
+            'not null' => TRUE,
+            'default' => '0'),
+         'seq' => array(
+            'description' => t('Determines the order of the child nodes.'),
+            'type' => 'int',
+            'unsigned' => TRUE,
+            'not null' => TRUE,
+            'default' => '0'),
+         'type' => array(
+            'description' => t('Identifies the type of relationship.'),
+            'type' => 'varchar',
+            'length' => '30',
+            'not null' => TRUE,
+            'default' => '?'),
+         'child_nid' => array(
+            'description' => t('Identifies the child node.'),
+            'type' => 'int',
+            'unsigned' => TRUE,
+            'not null' => TRUE,
+            'default' => '0'),
+      ),
+      'primary key' => array('parent_nid', 'seq'),
+      'indexes' => array(
+         'child_nid' => array('child_nid'),
+      ),
+   );
+   return $schema;
+}
+
+function node2node_install() {
+  drupal_install_schema('node2node');
+}
+
+function node2node_uninstall() {
+  drupal_uninstall_schema('node2node');
+}

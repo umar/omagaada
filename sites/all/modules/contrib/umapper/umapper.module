@@ -1,0 +1,796 @@
+<?php
+// $Id: umapper.module,v 1.1.2.1 2009/03/21 18:54:51 aaronott Exp $
+
+/**
+* Display help and module information
+* 
+* @param path which path of the site we're displaying help
+* @param arg array that holds the current path as would be returned from arg() function
+* @return help text for the path
+*/
+function umapper_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case "admin/help#umapper":
+      $output .= '<p>'.  t("Add a map to your node using
+                          <a href='@umapper'>UMapper.com</a> with ease",
+                          array('@umapper' => url('http://www.umapper.com'))) .'</p>';
+      $output .= '<p>' . t('You can add a map to you node by using the following markup in your node description:') . '</p>';
+      $output .= '<p><b>' . t('[umapper id=1234 height=400 width=500]') . '</b></p>';
+      $output .= '<p><b>umapper:</b> ' . t('This is the tag that lets the UMapper module know that you are wanting to embed a UMapper map.') . '</p>';
+      $output .= '<p><b>id:</b> ' . t('This is the map id from UMapper.  This can be obtained from the <a href="@map_list">map list</a> or on the create content page.', array('@map_list' => url('/umapper/maps'))) . '</p>';
+      $output .= "<p><b>height</b> &amp; <b>width:</b> " . t('This allows you to customize the height and width of the map when you add it to the node.') . '</p>';
+      $output .= '<p>' . t('You can synchronize your local maps with those that are on UMapper simply by going to the <a href="@map_list">map list</a> page and click on the Sync Maps link.  This is a nice and easy way of bringing all of your current UMapper maps in to your Drupal install.', array('@map_list' => url('/umapper/maps'))) .'</p>';
+      break;
+  }
+  return $output;
+} // function umapper_help
+
+
+/**
+ * implementation of hook_perm()
+ */
+function umapper_perm() {
+  return array('administer maps', 'access maps');
+} // function umapper_perm
+
+
+/**
+ * implemetation of hook_menu
+ */
+function umapper_menu() {
+  $items = array();
+  
+  $items['admin/settings/umapper'] = array (
+    'title' => t('UMapper Settings'),
+    'description' => 'Settings for UMapper API',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('umapper_admin_settings'),
+    'access arguments' => array('administer maps'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  
+  $items['umapper/maps/create'] = array (
+    'title' => t('New Map'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('umapper_edit_form'),
+    'type' => MENU_NORMAL_ITEM,
+    'access arguments' => array('administer maps'),
+  );
+  
+  $items['umapper/maps/sync'] = array (
+    'title' => t('Synchronize Maps'),
+    'page callback' => '_umapper_sync',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('administer maps'),
+  );
+    
+  $items['umapper/maps'] = array(
+    'title' => t('List Maps'),
+    'page callback' => 'theme',
+    'page arguments' => array('umapper_get_maps'),
+    'type' => MENU_NORMAL_ITEM,
+    'access arguments' => array(TRUE),
+  );
+  
+  $items['umapper/%'] = array(
+    'title' => t('View Map'),
+    'page callback' => 'theme',
+    'page arguments' => array('umapper_view_map', 1),
+    'type' => MENU_NORMAL_ITEM,
+    'access arguments' => array('administer maps'),
+  );
+  
+  $items['umapper/%/edit'] = array (
+    'title' => t('Edit Map Info'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('umapper_edit_form', 1),
+    'type' => MENU_LOCAL_TASK,
+    'access arguments' => array('administer maps'),
+    'weight' => 0,
+  );
+  
+  $items['umapper/%/edit/map'] = array (
+    'title' => t('Edit Map'),
+    'page callback' => 'umapper_edit_map_layout',
+    'page arguments' => array(1),
+    'type' => MENU_LOCAL_TASK,
+    'access arguments' => array('administer maps'),
+    'weight' => 3,
+  );
+  
+  $items['umapper/%/stats'] = array (
+    'title' => t('Map Stats'),
+    'page callback' => 'umapper_map_stats_layout',
+    'page arguments' => array(1),
+    'type' => MENU_LOCAL_TASK,
+    'access arguments' => array('administer maps'),
+    'weight' => 5,
+  );
+  
+  $items['umapper/%/delete'] = array (
+    'title' => t('Delete Map'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('umapper_confirm_delete', 1),
+    'type' => MENU_LOCAL_TASK,
+    'access arguments' => array('administer maps'),
+    'weight' => 10,
+  );
+
+  return $items;
+} // function umapper_menu
+
+
+/**
+ * implementation of hook_theme
+ * Register the theme
+ */
+function umapper_theme() {
+  return array(
+               'umapper_get_maps' => array(),
+               'umapper_view_map' => array('arguments' => array('map_id')),
+               );
+}//function umapper_theme
+
+/**
+ * Administration layout
+ */
+function umapper_admin_settings($form_state) {
+  $form = array();
+  
+  $form['umapper'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('UMapper API information'),
+    '#collapsible' => TRUE,
+    '#collapsed' => variable_get('umapper_apikey', NULL) != NULL,
+  );
+  
+  $form['umapper']['username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Username'),
+    '#default_value' => variable_get('umapper_username', ''),
+    '#required' => TRUE,
+  );
+  
+  $form['umapper']['password'] = array(
+    '#type' => 'password',
+    '#title' => t('Password'),
+    '#default_value' => variable_get('umapper_password', ''),
+    '#description' => t("For security purposes, we don't show the password after it's been set."),
+  );
+  
+  $form['umapper']['apikey'] = array(
+    '#type' => 'textfield',
+    '#title' => t('API Key'),
+    '#default_value' => variable_get('umapper_apikey', ''),
+    '#required' => TRUE,
+  );
+  
+  $form['umapper']['link'] = array(
+    '#value' => '<div>' . t('You can get your API Key by logging in to <a href="@umapper">UMapper.com</a>',
+                  array('@umapper' => url('http://umapper.com/account/'))) . '</div>',
+  );
+  
+  $form['umapper']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t("Submit"),
+  );
+  // future addition of caching ability
+
+  return $form;
+  
+} // function umapper_admin_settings
+
+/**
+ * implementation of hook_submit
+ *
+ * Submit the admin settings and save them in the variables table
+ * @param string $form_id
+ * @param array $form
+ */
+function umapper_admin_settings_submit($form_id, &$form) {
+  variable_set('umapper_username', check_plain($form['values']['username']));
+  
+  // allow the user to change username or api key without having to change their
+  // password
+  if($form['values']['password'] != '') {
+    variable_set('umapper_password', check_plain($form['values']['password']));
+  }
+  
+  variable_set('umapper_apikey', check_plain($form['values']['apikey']));
+  
+  drupal_set_message(t('UMapper settings have been saved'));
+}
+
+/**
+ * get a list of all the maps
+ *
+ * @param bool $remote get the maps from the umapper servers 
+ * @return array List of maps
+ */
+function umapper_get_maps($remote = FALSE) {
+  
+  if($remote) {
+    return _umapper_send('maps.getMaps');
+  } else {
+    $maps = array();
+    $result = db_query("SELECT * FROM {umapper}");
+    while($map = db_fetch_array($result)) {
+      $maps[] = $map;
+    }
+    
+    return $maps;
+  }
+} //function umapper_get_maps
+
+/**
+ * Map delete form
+ *
+ * verify that the user would like to delete this map
+ */
+function umapper_confirm_delete(&$form_state, $map_id) {
+  $form = array();
+  $map_meta = umapper_get_map_meta($map_id);
+  $form['map_id'] = array(
+    '#type' => 'hidden',
+    '#value' => $map_id,
+  );
+  
+  $form['map_title'] = array(
+    '#type' => 'hidden',
+    '#value' => $map_meta['mapTitle'],
+  );
+  
+  return confirm_form(
+    $form,
+    t('Are you sure you want to delete the map %title?', array('%title' => $map_meta['mapTitle'])),
+    "umapper/maps",
+    t('This map will also be removed from the UMapper Servers. This action cannot be undone.'),
+    t('Delete'),
+    t('Cancel'),
+    'umapper_confirm_delete');
+} //function umapper_confirm_delete
+
+/**
+ * Get Map KML
+ *
+ * Get the path to the mapping KML
+ *
+ * @param int $map_id
+ * @param bool $remote Get the URL from the umapper server.
+ *      False value will return the URL from the local database
+ * @return string URI to the kml
+ */
+function umapper_get_map_uri($map_id, $remote = FALSE) {
+  if($remote) {
+    return _umapper_send('maps.getMap', array((int)$map_id));
+  } else {
+    return db_result(db_query("SELECT `uri` FROM {umapper} WHERE `id` = %d", $map_id));
+  }
+}//function umapper_get_map_uri
+
+/**
+ * map delete submit
+ *
+ * carry out the deletion of the map
+ */
+function umapper_confirm_delete_submit($form_id, &$form) {
+  // send the delete to the server
+  if(!$response = _umapper_send('maps.deleteMap', array((int)$form['values']['map_id']))) {
+    return FALSE;
+  }
+  // must clean this from the local db as well
+  db_query("DELETE FROM {umapper} WHERE `id` = %d", $form['values']['map_id']);
+  
+  drupal_set_message(t('The map: %title has been deleted.', array('%title' => $form['values']['map_title'])));
+  $form['redirect'] = "umapper/maps";
+}//umapper_confirm_delete_submit
+
+/**
+ * Edit map layout
+ *
+ * a page with the UMapper map editor embeded into it
+ * @param int $map_id
+ */
+function umapper_edit_map_layout($map_id) {
+  drupal_add_css(drupal_get_path('module', 'umapper') . "/umapper.css", 'module','all',TRUE);
+  
+  if(!$token = _umapper_get_token()) {
+    return FALSE;
+  }
+  
+  // use the map_meta to get the title
+  $meta = umapper_get_map_meta($map_id);
+  $title = drupal_get_title();
+  drupal_set_title($title . ": " . $meta['mapTitle']);
+  
+  $embed_code = '<div id="map_editor_container">
+          <object classid="clsid:D27CDB6E-AE6D-11cf-96B8-444553540000"
+          id="http://umapper.s3.amazonaws.com/assets/swf/edit" width="100%" height="100%"
+          codebase="http://fpdownload.macromedia.com/get/flashplayer/current/swflash.cab">
+          <param name="movie" value="http://umapper.s3.amazonaws.com/assets/swf/edit.swf" />
+          <param name="quality" value="high" />
+          <param name="bgcolor" value="#000000" />
+          <param name="src" value="http://umapper.s3.amazonaws.com/assets/swf/edit" />
+          <param name="name" value="editor" />
+          <param name="FlashVars" value="token=' . $token . '&mapid=' . $map_id . '" />
+          <param name="allowScriptAccess" value="always" />
+          <embed FlashVars="token=' . $token . '&mapid=' . $map_id . '"  src="http://umapper.s3.amazonaws.com/assets/swf/edit.swf" id="http://umapper.s3.amazonaws.com/assets/swf/edit" quality="high" bgcolor="#000000"
+            width="100%" height="100%" name="editor" align="middle"
+            play="true"
+            loop="false"
+            quality="high"
+            allowScriptAccess="always"
+            type="application/x-shockwave-flash"
+            pluginspage="http://www.adobe.com/go/getflashplayer">
+          </embed>
+      </object></div>';
+  $output = $embed_code;
+  
+  return $output;
+}//umapper_edit_map_layout
+
+
+/**
+ * Map Statistics
+ *
+ * Flash embed for the map statistics
+ * @param int $map_id
+ */
+function umapper_map_stats_layout($map_id) {
+  drupal_add_css(drupal_get_path('module', 'umapper') . "/umapper.css", 'module','all',TRUE);
+  
+  // use the map_meta to get the title
+  $meta = umapper_get_map_meta($map_id);
+  drupal_set_title("Map Statistics: " . $meta['mapTitle']);
+  
+  $embed_code = '<div id="map_editor_container">
+     	<object classid="clsid:D27CDB6E-AE6D-11cf-96B8-444553540000"
+			id="/content/swf/stats" width="100%" height="100%"
+			codebase="http://fpdownload.macromedia.com/get/flashplayer/current/swflash.cab">
+			<param name="movie" value="http://umapper.s3.amazonaws.com/assets/swf/stats.swf" />
+			<param name="FlashVars" value="mapid='.$map_id.'" />
+			<param name="quality" value="high" />
+			<param name="bgcolor" value="#ffffff" />
+			<param name="allowScriptAccess" value="sameDomain" />
+			<embed src="http://umapper.s3.amazonaws.com/assets/swf/stats.swf" quality="high" bgcolor="#ffffff"
+				width="100%" height="100%" name="stats" align="middle"
+				FlashVars="mapid='.$map_id.'"
+				play="true"
+				loop="false"
+				quality="high"
+				allowScriptAccess="sameDomain"
+				type="application/x-shockwave-flash"
+				pluginspage="http://www.adobe.com/go/getflashplayer">
+			</embed>
+	</object>
+</div>';
+  $output = $embed_code;
+  
+  return $output;
+}//umapper_map_stats_layout
+
+/**
+ * Create a UMapper Map
+ *
+ * This is a form to collect the Title and Description of the UMapper map
+ * @param string $form_state
+ * @return 
+ */
+function umapper_edit_form($form_state, $map_id = NULL) {
+  $form = array();
+  $title_action = "Create ";
+  
+  if($map_id) {
+    $map_meta = umapper_get_map_meta($map_id);
+    $form['map_id'] = array(
+      '#type' => 'hidden',
+      '#value' => $map_id,
+    );
+    $title_action = "Edit ";
+  }
+  
+  drupal_set_title($title_action . "Map");
+  
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Title'),
+    '#default_value' => $map_meta ? $map_meta['mapTitle'] : 'New Map',
+    '#required' => TRUE,
+  );
+  
+  $form['description'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Description'),
+    '#default_value' => $map_meta ? $map_meta["mapDesc"] : '',
+  );
+  
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+  
+  return $form;
+}//umapper_edit_form
+
+/**
+ * Get the map meta data for edit
+ *
+ * get an array containing the date created, description, title
+ * 
+ * @param int $map_id
+ * @param bool $remote Get the data from the UMapper server
+ *      FALSE will gather the data from the local database server
+ * @return array MapMeta
+ */
+function umapper_get_map_meta($map_id, $remote = FALSE) {
+  if($remote) {
+    return _umapper_send('maps.getMapMeta', array((int)$map_id));
+  } else {
+    return db_fetch_array(db_query("SELECT * FROM {umapper} WHERE id = %d", $map_id));
+  }
+}//umapper_get_map_meta
+
+/**
+ * Implementation of hook_submit()
+ *
+ * if map_id is set, this submit will send a saveMapMeta call through, else
+ * it will send a createMap method and redirect the user to the appropriate map
+ * 
+ * @param string $form_id
+ * @param arrah $form_id
+ */
+function umapper_edit_form_submit($form_id, &$form) {
+  //initialize $map_id
+  $map_id = 0;
+  
+  $mapMeta = array(
+    'mapTitle' => check_plain($form['values']['title']),
+    'mapDesc'  => $form['values']['description'] ? check_plain($form['values']['description']) : '',
+  );
+  
+  // if there is a map_id, this is an update
+  if($form['values']['map_id'] && is_numeric($form['values']['map_id'])) {
+    $map_id = $form['values']['map_id'];
+    $response = _umapper_send('maps.saveMapMeta', array((int)$map_id, $mapMeta));
+    // update the local copy of this data
+    db_query("UPDATE {umapper} SET `mapTitle` = '%s', `mapDesc` = '%s' WHERE `id` = %d",
+             $mapMeta['mapTitle'], $mapMeta['mapDesc'], $map_id);
+  } else {
+    
+    if($map_id = _umapper_send('maps.createMap', array($mapMeta))) {
+      
+      $uri  = umapper_get_map_uri($map_id, TRUE);
+      $meta = umapper_get_map_meta($map_id, TRUE);
+      // need to create us a local copy of the data for speed and caching purposes
+      db_query("INSERT INTO {umapper} (`id`, `mapTitle`, `mapDesc`, `dateCreated`, `providerId`, `uri`)
+               VALUES (%d, '%s', '%s', '%s', %d, '%s')", $map_id, $meta['mapTitle'],
+               $meta['mapDesc'], $meta['dateCreated'], $meta['providerId'], $uri);
+    } else {
+      return FALSE;
+    }
+  }
+
+  $form['redirect'] = "umapper/$map_id/edit/map";
+}//umapper_edit_form_submit
+
+/**
+ * XML-RPC wrapper for sending requests to UMapper
+ *
+ * @param string $method
+ * @param array $args
+ * @return depends on method
+ */
+function _umapper_send($method, $args = array()) {
+  $key = variable_get('umapper_apikey', '');
+  if(!$token = _umapper_get_token()) {
+    return FALSE;
+  }
+  
+  // every call will have the same format for the first four parameters
+  array_unshift($args, 'http://www.umapper.com/services/xmlrpc/', $method, $token, $key);
+  $response = call_user_func_array('xmlrpc', $args);
+
+  if(!$response) {
+    $errno = xmlrpc_error();
+    drupal_set_message("<pre>ERROR while calling $method: " . print_r($errno, TRUE), "</pre>");
+    watchdog('umapper', "ERROR while calling $method: " . print_r($errno, TRUE));
+    return FALSE;
+  }
+  
+  return $response;
+}//_umapper_send
+
+/**
+ * get the token
+ * 
+ * @access private
+ * @return string token
+ */
+function _umapper_get_token() {
+  // check to see if the token is set
+  $token = '';
+  $ts = mktime(); // timeout the token after 2 minutes
+
+  if(!isset($_SESSION['umapper_token']) || !isset($_SESSION['timestamp'])
+     || $ts - $_SESSION['timestamp'] > 120) {
+    if(!$token = _umapper_connect()) {
+      watchdog('umapper_token', "Get Token failed.");
+      return FALSE;
+    }
+    // set the token to the session
+    $_SESSION['umapper_token'] = $token;
+    $_SESSION['timestamp'] = $ts;
+  } else {
+    $token = $_SESSION['umapper_token'];
+  }
+  return $token;
+}//_umapper_get_token
+
+/**
+ * make a connection to UMapper
+ *
+ * @access private
+ * @return string token
+ */
+function _umapper_connect() {
+
+  // setup the connection parameters
+  $username = variable_get('umapper_username', '');
+  $password = variable_get('umapper_password', '');
+  $key      = variable_get('umapper_apikey', '');
+
+  $response = xmlrpc('http://www.umapper.com/services/xmlrpc/',
+                     'maps.connect',
+                     $username,
+                     md5($password),
+                     $key);
+ 
+  if($errno = xmlrpc_error()) {
+    drupal_set_message(t("<pre>There was an error while connecting: %error</pre>", array('%error' => $errno->message)));
+    watchdog('uconnect', "Connect ERRNO RESPONSE: " . var_export($errno, TRUE));
+    return FALSE;
+  }
+  return $response;
+}//_umapper_connect
+
+/**
+ * Sync the maps with what's on UMapper
+ *
+ * sometimes things can get out of sync, and every now and again
+ * you will want to refresh your listing, especially if you made
+ * changes on UMapper.com
+ *
+ * @return bool
+ */
+function _umapper_sync() {
+  $maps = umapper_get_maps(TRUE);
+  
+  // remove everything from the db first to clear out anything that
+  // was deleted on the UMapper side
+  db_query("DELETE FROM {umapper}");
+  foreach($maps as $map) {
+    $uri  = umapper_get_map_uri($map['id'], TRUE);
+    $meta = umapper_get_map_meta($map['id'], TRUE);
+    
+    db_query("INSERT INTO {umapper}
+             (`id`, `mapTitle`, `mapDesc`, `dateCreated`, `providerId`, `uri`)
+             VALUES (%d,'%s','%s','%s',%d,'%s')", $map['id'], check_plain($meta['mapTitle']),
+             check_plain($meta['mapDesc']), $meta['dateCreated'], $meta['providerId'], check_url($uri));
+  }
+  
+  drupal_set_message('Sync is complete.');
+  drupal_goto("umapper/maps");
+}
+
+/**
+ * Theme the list of maps
+ * 
+ * Output a list of maps in a table along with actions
+ * @param bool $fullpage,
+ *        This can be used for just table display as well
+ * @return string themed HTML output
+ */
+function theme_umapper_get_maps($fullpage = TRUE) {
+  
+  if($fullpage) {
+    $bottom_links = array(
+              array('title' => 'New Map', 'href' => 'umapper/maps/create'),
+              array('title' => 'Sync Maps', 'href' => 'umapper/maps/sync'),
+            );
+  
+    $bottom_action_links = theme_links($bottom_links);
+  }
+  
+  if(!$maps = umapper_get_maps()) {
+    return "<div class='list_action_links'>$bottom_action_links</div>";
+  }
+  
+  if($fullpage){
+    $header = array('Map Id','Title', 'Actions');
+  } else {
+    $header = array('Map Id','Title');    
+  }
+
+  $rows = array();
+  foreach($maps as $map) {
+    $links = array(
+                array('title' => 'View', 'href' => 'umapper/' . $map['id']),
+                array('title' => 'Edit', 'href' => 'umapper/' . $map['id'] . '/edit'),
+                array('title' => 'Stats', 'href' => 'umapper/' . $map['id'] . '/stats'),
+                array('title' => 'Delete', 'href' => 'umapper/' . $map['id'] . '/delete'),
+              );
+
+    $action_links = theme_links($links);
+    if($fullpage) {
+      $rows[] = array($map['id'], $map['mapTitle'], $action_links);
+    } else {
+      $rows[] = array($map['id'], $map['mapTitle']);      
+    }
+  }
+  
+  $output = theme('table',$header, $rows);
+  
+  if($fullpage) {
+    $output .= "<div class='list_action_links'>$bottom_action_links</div>";
+  }
+
+  return $output;
+}//theme_umapper_get_maps
+
+/**
+ * Theme the view of the map
+ *
+ * @return string themed HTML output
+ */
+function theme_umapper_view_map($map_id) {
+  $map_meta = umapper_get_map_meta($map_id);
+  $map_uri  = umapper_get_map_uri($map_id);
+
+  drupal_set_title($map_meta['mapTitle']);
+  $embed = '
+    <object classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" codebase="http://download.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=9,0,0,0" width="296" height="300" id="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" align="middle">
+      <param name="allowScriptAccess" value="always" />
+      <param name="allowFullScreen" value="true" />
+      <param name="height" value="300" />
+      <param name="width" value="296" />
+      <param name="src" value="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" />
+      <param name="FlashVars" value="kmlPath=' . $map_uri . '&poweredBy=false&fullScreenButton=false&expandedControls=false" />
+      <param name="id" value="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" />
+      <param name="name" value="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" />
+      <param name="movie" value="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" />
+      <param name="quality" value="high" />
+      <param name="salign" value="t" />
+      <param name="wmode" value="opaque" />	
+      <embed height="300" width="296" src="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" FlashVars="kmlPath=' . $map_uri . '&poweredBy=false&fullScreenButton=false&expandedControls=false" id="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" name="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" movie="http://umapper.s3.amazonaws.com/assets/swf/embed.swf"  quality="high" salign="t" wmode="opaque" align="middle" allowScriptAccess="always" allowFullScreen="true" type="application/x-shockwave-flash" pluginspage="http://www.macromedia.com/go/getflashplayer" />
+    </object>';
+    
+    $output = '';
+    //$output  .= "<h2>" . $map_meta['mapTitle'] . "</h2>";
+    $output .= "<div id='map-description'>" . $map_meta['mapDesc'] . "</div>";
+    $output .= $embed;
+
+  return $output;
+}//theme_umapper_view_map
+
+/**
+ * implementation of hook_nodeapi
+ *
+ * replace all the [map] values
+ * 
+ * &$node The node the action is being performed on.
+ *
+ * $op What kind of action is being performed. Possible values:
+ *   "alter": the $node->content array has been rendered, so the node body or teaser is filtered and now contains HTML. This op should only be used when text substitution, filtering, or other raw text operations are necessary.
+ *   "delete": The node is being deleted.
+ *   "delete revision": The revision of the node is deleted. You can delete data associated with that revision.
+ *   "insert": The node is being created (inserted in the database).
+ *   "load": The node is about to be loaded from the database. This hook can be used to load additional data at this time.
+ *   "prepare": The node is about to be shown on the add/edit form.
+ *   "prepare translation": The node is being cloned for translation. Load additional data or copy values from $node->translation_source.
+ *   "print": Prepare a node view for printing. Used for printer-friendly view in book_module
+ *   "rss item": An RSS feed is generated. The module can return properties to be added to the RSS item generated for this node. See comment_nodeapi() and upload_nodeapi() for examples. The $node passed can also be modified to add or remove contents to the feed item.
+ *   "search result": The node is displayed as a search result. If you want to display extra information with the result, return it.
+ *   "presave": The node passed validation and is about to be saved. Modules may use this to make changes to the node before it is saved to the database.
+ *   "update": The node is being updated.
+ *   "update index": The node is being indexed. If you want additional information to be indexed which is not already visible through nodeapi "view", then you should return it here.
+ *   "validate": The user has just finished editing the node and is trying to preview or submit it. This hook can be used to check the node data. Errors should be set with form_set_error().
+ *   "view": The node content is being assembled before rendering. The module may add elements $node->content prior to rendering. This hook will be called after hook_view(). The format of $node->content is the same as used by Forms API. 
+ * 
+ * $a3
+ *   For "view", passes in the $teaser parameter from node_view().
+ *   For "validate", passes in the $form parameter from node_validate(). 
+ * 
+ * $a4
+ *   For "view", passes in the $page parameter from node_view(). 
+ */
+function umapper_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  switch($op) {
+    case 'view':
+      $body = $node->content['body']['#value'];
+      if(preg_match_all('/\[umapper ((\w+=\w+\s*)+)\]/', $body, $matches)) {
+  
+        list($full, $params, $blah) = $matches;
+  
+        $i=0;
+        $p = array();
+        foreach($params as $param) {
+          $arr = preg_split('/ /', $param);
+          foreach($arr as $a) {
+            list($key, $val) = preg_split('/=/', $a);
+            $p[$i][$key] = $val;
+          }
+          $i++;
+        }
+  
+        // time for the replacements
+        $n =0;
+        foreach($full as $f) {
+          $pattern = "/". addcslashes($f, '[]') ."/";
+          $map_uri = umapper_get_map_uri($p[$n]['id']);
+          $embed_code = '<div class="umapper-map">
+          <object classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" codebase="http://download.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=9,0,0,0" width="'.$p[$n]['width'].'" height="' .$p[$n]['height'].'" id="umapper_embed_'.$p[$n]['id'].'">
+            <param name="FlashVars" value="kmlPath=' . $map_uri . '" />
+            <param name="allowScriptAccess" value="always" />
+            <param name="movie" value="http://umapper.s3.amazonaws.com/assets/swf/embed.swf" />
+            <param name="quality" value="high" />
+            <embed src="http://umapper.s3.amazonaws.com/assets/swf/embed.swf"
+              FlashVars="kmlPath=' . $map_uri . '"
+              allowScriptAccess="always"
+              quality="high"
+              width='.$p[$n]['width'].'
+              height='.$p[$n]['height'].'
+              name="umapper_embed_"' . $p[$n]['id'] .'
+              type="application/x-shockwave-flash"
+              pluginspage="http://www.macromedia.com/go/getflashplayer" />
+          </object>';
+          $body = preg_replace($pattern, $embed_code, $body);
+          $n++;
+        }
+      }
+      $node->content['body']['#value'] = $body;
+      break;
+  }
+}
+
+/**
+ * implementation of hook_form_alter
+ *
+ * alter the form for the adding and editing of nodes to
+ * allow for instructions to be posted
+ *
+ * @param array &$form the form elements being altered
+ * @param array $form_state A keyed array containing the current state of the form
+ * @param string $form_id String representing the name of the form itself.
+ *        Typically this is the name of the function that generated the form.
+ */
+function umapper_form_alter(&$form, $form_state, $form_id) {
+  //drupal_set_message("form id: $form_id");
+  if(preg_match('/node_form$/', $form_id)) {
+    $form['umapper']['fieldset'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('UMapper Maps'),
+      '#weight' => 0,
+      '#collapsible' => TRUE,
+      '#collapsed' => FALSE,
+    );
+    
+    
+    $instructions .= '<p>' . t('You can add a map to you node by using the following markup in your node description:') . '</p>';
+    $instructions .= '<p><b>' . t('[umapper id=1234 height=400 width=500]') . '</b></p>';
+    $instructions .= '<p><b>umapper:</b> ' . t('This is the tag that lets the UMapper module know that you are wanting to embed a UMapper map.') . '</p>';
+    $instructions .= '<p><b>id:</b> ' . t('This is the map id from UMapper.  This can be obtained from the list below.') . '</p>';
+    $instructions .= "<p><b>height</b> &amp; <b>width:</b> " . t('This allows you to customize the height and width of the map when you add it to the node.') . '</p>';
+    
+    $form['umapper']['fieldset']['instructions'] = array (
+      '#type' => 'item',
+      '#value' => $instructions,
+      '#weight' => 0,
+    );
+    
+    $form['umapper']['fieldset']['maps'] = array (
+      '#value' => theme('umapper_get_maps', FALSE),
+      '#weight' => 1,
+    );
+  }
+}

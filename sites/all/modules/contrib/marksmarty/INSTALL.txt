@@ -1,0 +1,54 @@
+Markdown with SmartyPants Filter
+================================
+Markdown and SmartPants created by John Gruber: <http://daringfireball.net>  
+PHP executions by Michel Fortin: <http://www.michelf.com/>  
+Packaging as Drupal filter by Noah Mittman: <http://www.teradome.com/>  
+
+Quick Start:
+------------
+To install Markdown with SmartyPants, move the entire "marksmarty"
+directory into your Drupal installation's modules folder.
+
+Don't forget to enable it in
+
+	administer->modules
+
+Once installed, it will be available for both posts and comments.
+You will now need to configure Marksmarty into a new or exsiting input 
+format for your site in
+
+	administer->input formats
+
+I'm not going to go into too much detail about the input format system
+here: I recommend that you read the Drupal handbook on drupal.org and
+the help pages in Drupal itself if you need assistance.
+
+Within an input format using Marksmarty, if you select "configure filters"
+you can change a few SmartyPants options, such as en-dash support, or even
+disabling it altogether if you are working in an all-UTF-8 workflow or if
+you want to use your own conversion-to-entity routines.
+
+About:
+------
+Marksmarty is a modified version of one of the many Markdown modules for
+Drupal, styled after wiki.module in application, and meant to act as the
+"Markdown with SmartyPants" formatting option in MovableType. This one
+applies the filtering "live"--it does not need to be enabled per post
+and does not add extra markup per post. This is because Markdown by
+design is meant to coexist with HTML as well as be as human-readable as
+possible when left as "source."
+
+In addition, this module uses SmartyPants, which "educates" characters
+automatically--inch-marks into curly quotes, foot-marks into
+apostrophes, double hyphens into em-dashes, etc. Since "Markdown with
+SmartyPants" requires a specific processing order, I combined them into
+one module instead of having to warn people to set their filtering order
+properly. (SmartyPants always expects HTML as its input, so it must be 
+run *after* Markdown.)
+
+One thing that should be said about this is that it is also enabled for
+comments. While no tag that Markdown creates is destructive (you can't
+create objects or scripts) it will still create a few that you may not want 
+in comments. In this case, it is required that you add HTML filtering into
+your input module to remove trouble tags--for example,
+you may not want people to use H1s in their posts.

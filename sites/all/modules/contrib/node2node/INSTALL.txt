@@ -1,0 +1,48 @@
+Node2Node
+=========
+This module allows you to define and create relationships between different types of node (and different nodes of the same type, if you wish).
+
+-  The child nodes of a parent can be set in a user-defined order, allowing the information in the child nodes to be presented in the most suitable order.
+-  All relationships are many-to-many - a parent can have many children and a child can have many parents
+-  It's possible to have two types of relationships between the same nodes, eg:
+      Relationship 1: Parent owns child
+      Relationship 2: Parent uses child
+-  The parent and child nodes can be of the same type, eg:
+      Page is related to Page
+
+
+Installation
+============
+1) Copy the source code into the standard location ({basepath}/sites/all/modules/node2node)
+2) Go to admin/build/modules and enable the module
+
+Configuration
+=============
+1) Go to admin/settings/node2node
+2) Enter the definitions for the relationships that you want to allow on your site
+
+Each relationship has the following information:
+-  Parent: an existing node type which can be a parent node in this relationship
+-  Chile: an existing node type which can be a child node in this relationship
+-  Name of relationship: User-friendly name for the relationship, defaults to "has", ie Parent has Child
+-  Inverse name: User-friendly name for the opposite relationship, defeaults to "belongs to", ie Child belongs to Parent
+-  ID: An identifier by which this relationship is known (and stored internally) - Changing this after you have set up relationships between nodes will "break" those relationships
+
+By defining permitted relationships in your system you can set up links between different types of information.
+
+Usage
+=====
+To create a relationship between two nodes:
+-  View one of the nodes.  If this node type has been set up to be in a relationship there will be a button, allowing you to make it the Target.  Clicking this button will allow you to link other nodes to this one.
+-  Go to (or create) another node and click on its Edit screen.  If there is an allowed relationship between this node and the target node (either as parent or child) the possible link will be listed.  A blank check box indicates that the relationship does not yet exist.  Check the check box to create the relationship (after clicking Submit).
+
+To delete a relationship between two nodes:
+-  Go to either of the nodes and click on the Edit screen.
+-  All parent and child links will be displayed, with a check box to indicate that the relationship exists
+-  Uncheck the checkbox to delete the relationship (after clicking Submit)
+
+To change the order of relationships:
+-  Go to the parent node in the relationship and click on the Edit screen
+-  A sequence drop-down will be displayed by each of the child nodes
+-  Alter the sequence number to change the order (after clicking Submit)
+

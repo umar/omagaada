@@ -1,0 +1,702 @@
+<?php
+/**
+ * Implementation of hook_requirements(). 
+ */
+function nodemap_requirements($phase) {
+    // Ensure translations don't break at install time
+    $t = get_t();
+    $requirements = array();
+    switch ($phase) {
+        case 'runtime':
+            // check if yahoo api key is present:
+            $sYahooApiKey = variable_get('nodemap_yahoo_api_key', '');
+            if (empty($sYahooApiKey)) {
+                $requirements['nodemap_yahoo_api_key_not_present'] = array (
+                'title' => $t('Node Map - Yahoo Maps <i>API key</i> not present'),
+                'description' => $t('The module needs an Yahoo <b>API Key</b> to work. Get one @ '.l($t('here'), 'http://developer.yahoo.com/wsregapp/', array('attributes'=>array('target'=>'_blank'), 'absolute'=>TRUE)).', and then go to the Node Map '.l($t('setings page'), 'admin/settings/nodemap', array('attributes'=>array('target'=>'_self'))).'.'),
+                'severity' => REQUIREMENT_ERROR
+                );
+            }
+            // check if google api key is present:
+            $sGoogleApiKey = variable_get('nodemap_google_api_key', '');
+            $iUseGoogleGeocodingService = variable_get('nodemap_use_google_geocode', 0);
+            if (empty($sGoogleApiKey) && $iUseGoogleGeocodingService != 0) {
+                $requirements['nodemap_google_api_key_not_present'] = array (
+                'title' => $t('Node Map - Google Maps <i>API key</i> not present'),
+                'description' => $t('The module needs an Google Maps <b>API Key</b> if you want to use <i>Google Maps Geocoding service</i>. Get one from '.l($t('here'), 'http://code.google.com/apis/maps/signup.html', array('attributes'=>array('target'=>'_blank'), 'absolute'=>TRUE)).', and then go to the Node Map '.l($t('setings page'), 'admin/settings/nodemap', array('attributes'=>array('target'=>'_self'))).'.'),
+                'severity' => REQUIREMENT_ERROR
+                );
+            }
+            break;
+    }
+    return $requirements;
+}
+/**
+ * Implementation of hook_access(). 
+ */
+function nodemap_perm() {
+    $perm = array();
+    $perm[] = "view node map block";
+    $perm[] = "edit node map";
+    //$perm[] = "view map block";
+    return $perm;
+}
+/**
+ * Define the settings form.
+ */ 
+function nodemap_admin_settings() {
+
+    $form['nodemap_general_fieldset'] = array (
+    '#type' => 'fieldset',
+    '#title' => t('General settings'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#prefix' => '',
+    '#suffix' => '',
+    '#weight' => -10
+    );
+    $form['nodemap_general_fieldset']['nodemap_yahoo_api_key'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Yahoo Maps API key'),
+    '#default_value' => variable_get('nodemap_yahoo_api_key', ''),
+    '#description' => t('Enter Yahoo Maps API key.').' '.t('You can get it from ').l(t('here'), 'http://developer.yahoo.com/wsregapp/', array('attributes'=>array('target'=>'_blank'), 'absolute'=>TRUE)).'.',
+    '#size' => 110
+    );
+    $form['nodemap_general_fieldset']['nodemap_google_api_key'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Google Maps API key'),
+    '#default_value' => variable_get('nodemap_google_api_key', ''),
+    '#description' => t('Enter Google Maps API key.').' '.t('You can get it from ').l(t('here'), 'http://code.google.com/apis/maps/signup.html', array('attributes'=>array('target'=>'_blank'), 'absolute'=>TRUE)).'. '.t('Optional, but <b>mandatory</b> if you use <i>Google Maps Geocoding service</i> below.'),
+    '#size' => 110
+    );
+    $form['nodemap_general_fieldset']['nodemap_use_google_geocode'] = array (
+    '#type' => 'checkbox',
+    '#title' => t('Use Google Maps Geocoding service'),
+    '#default_value' => variable_get('nodemap_use_google_geocode', 0),
+    '#description' => t('Check this if you want to use Google Maps geocoding service in tandem with Yahoo geocoding service. (For better results.)')
+    );
+    $form['nodemap_general_fieldset']['nodemap_enabled_nodetypes'] = array (
+    '#type' => 'checkboxes',
+    '#title' => t('Enable Node Map for'),
+    '#options' => node_get_types('names'),
+    '#default_value' => variable_get('nodemap_enabled_nodetypes', array('story'=>'story')),
+    '#description' => t('Select on what node types this module will be enabled.')
+    );
+
+    $form['nodemap_editmap_fieldset'] = array (
+    '#type' => 'fieldset',
+    '#title' => t('Edit map settings'),
+    '#description' => t('Settings for the map used in node edit page.'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#prefix' => '',
+    '#suffix' => '',
+    '#weight' => -9
+    );
+    $form['nodemap_editmap_fieldset']['nodemap_container_width'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Map width'),
+    '#default_value' => variable_get('nodemap_container_width', 600),
+    '#description' => t('Enter map width in pixels.')
+    );
+    $form['nodemap_editmap_fieldset']['nodemap_container_height'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Map height'),
+    '#default_value' => variable_get('nodemap_container_height', 450),
+    '#description' => t('Enter map height in pixels.')
+    );
+    $form['nodemap_editmap_fieldset']['nodemap_default_map_location'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Default map location'),
+    '#default_value' => variable_get('nodemap_default_map_location', "Atomium Square 1020, Brussels, Belgium"),
+    '#description' => t('Enter default map location.')
+    );
+    $form['nodemap_editmap_fieldset']['nodemap_default_map_zoom_level'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Default map zoom level'),
+    '#default_value' => variable_get('nodemap_default_map_zoom_level', 5),
+    '#description' => t('Enter default map zoom level. Beetween <b>1 & 16</b>.')
+    );
+    $form['nodemap_editmap_fieldset']['nodemap_default_map_type'] = array (
+    '#type' => 'radios',
+    '#title' => t('Default map type'),
+    '#default_value' => variable_get('nodemap_default_map_type', "map"),
+    '#options' => array (
+    'map' => t('Map'),
+    'sat' => t('Satellite'),
+    'hyb' => t('Hybrid')
+    ),
+    '#description' => t('Enter default map type.')
+    );
+
+    $form['nodemap_node_block_view_map_fieldset'] = array (
+    '#type' => 'fieldset',
+    '#title' => t('Node-view map settings'),
+    '#description' => t('Settings for the map used in node view block.'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#prefix' => '',
+    '#suffix' => '',
+    '#weight' => -8
+    );
+    $form['nodemap_node_block_view_map_fieldset']['nodemap_node_block_view_container_width'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Map width'),
+    '#default_value' => variable_get('nodemap_node_block_view_container_width', 450),
+    '#description' => t('Enter map width in pixels.')
+    );
+    $form['nodemap_node_block_view_map_fieldset']['nodemap_node_block_view_container_height'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Map height'),
+    '#default_value' => variable_get('nodemap_node_block_view_container_height', 300),
+    '#description' => t('Enter map height in pixels.')
+    );
+    $form['nodemap_node_block_view_map_fieldset']['nodemap_node_block_view_default_map_zoom_level'] = array (
+    '#type' => 'textfield',
+    '#title' => t('Default map zoom level'),
+    '#default_value' => variable_get('nodemap_node_block_view_default_map_zoom_level', 5),
+    '#description' => t('Enter default map zoom level. Beetween <b>1 & 16</b>.')
+    );
+    $form['nodemap_node_block_view_map_fieldset']['nodemap_node_block_view_default_map_type'] = array (
+    '#type' => 'radios',
+    '#title' => t('Default map type'),
+    '#default_value' => variable_get('nodemap_node_block_view_default_map_type', "map"),
+    '#options' => array (
+    'map' => t('Map'),
+    'sat' => t('Satellite'),
+    'hyb' => t('Hybrid')
+    ),
+    '#description' => t('Enter default map type.')
+    );
+    $form['nodemap_node_block_view_map_fieldset']['nodemap_node_block_view_show_title'] = array (
+    '#type' => 'checkbox',
+    '#title' => t('Show node title'),
+    '#default_value' => variable_get('nodemap_node_block_view_show_title', 1),
+    '#description' => t('Check this if you want to show the node title on the map marker.')
+    );
+    $form['nodemap_node_block_view_map_fieldset']['nodemap_node_block_view_show_address'] = array (
+    '#type' => 'checkbox',
+    '#title' => t('Show address'),
+    '#default_value' => variable_get('nodemap_node_block_view_show_address', 1),
+    '#description' => t('Check this if you want to show the address on the map marker.')
+    );
+
+    return system_settings_form($form);
+}
+/**
+ * Implementation of hook_menu(). 
+ */ 
+function nodemap_menu() {
+    $items = array();
+
+    $items['admin/settings/nodemap'] = array (
+    'title' => 'Node Map',
+    'description' => 'Configure Node Map settings.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nodemap_admin_settings'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer site configuration')
+    );
+    $items['nodemap/getgeocodes'] = array (
+    'title' => 'Node Map AJAX geocoding',
+    'page callback' => 'nodemap_get_address_geocodes',
+    'access callback' => 'user_access',
+    'access arguments' => array('edit node map'),
+    'type' => MENU_CALLBACK
+    );
+
+    return $items;
+}
+/**
+ * Implementation of hook_nodeapi(). 
+ */
+function nodemap_nodeapi(&$node, $op, &$a3, $a4) {
+    global $user;
+    // return if this node type is not defined in settings:
+    $iEnableNodeType = 1;
+    $aNodeMapEnabledNodeTypes = variable_get('nodemap_enabled_nodetypes', array('story'=>'story'));
+    if (!isset($aNodeMapEnabledNodeTypes[$node->type]) || $aNodeMapEnabledNodeTypes[$node->type] == '0') {
+        $iEnableNodeType = 0;
+    }
+    if ($iEnableNodeType == 0) {
+        return;
+    }
+    // ops:
+    switch ($op) {
+        // LOAD:
+        case 'load':
+            // brake if the user has no access roles
+            if (!user_access("view node map block")) {
+                break;
+            }
+            // take data from db:
+            $rNodeMapQuery = db_query("SELECT * FROM {nodemap} WHERE nodemap_nid=%d", $node->nid);
+            // count results:
+            $iNodeMapQueryResults = db_result(db_query("SELECT COUNT(*) FROM {nodemap} WHERE nodemap_nid=%d", $node->nid));
+            if ($iNodeMapQueryResults > 0) {
+                $oNodeMap = db_fetch_object($rNodeMapQuery);
+                // add to node load:
+                if ($oNodeMap->nodemap_latitude != '0.000000' && $oNodeMap->nodemap_longitude != '0.000000') {
+                    $node->nodemap_latitude_field = $oNodeMap->nodemap_latitude;
+                    $node->nodemap_longitude_field = $oNodeMap->nodemap_longitude;
+                    $node->nodemap_address_field = $oNodeMap->nodemap_address;
+                    $node->nodemap_serialized_field = $oNodeMap->nodemap_serialized;
+                }
+                else {
+                    $node->nodemap_latitude_field = '';
+                    $node->nodemap_longitude_field = '';
+                    $node->nodemap_address_field = '';
+                    $node->nodemap_serialized_field = '';
+                }
+            }
+            break;
+
+            // DELETE:
+        case 'delete':
+            db_query("DELETE FROM {nodemap} WHERE nodemap_nid=%d", $node->nid);
+            break;
+
+            // INSERT:
+            // UPDATE:
+        case 'insert':
+        case 'update':
+            //echo "<pre>".print_r($node, true)."</pre>"; die();
+            // brake if the user has no access roles
+            if (!user_access("edit node map")) {
+                break;
+            }
+            // check for existance:
+            $iCheckNodeMap = db_result(db_query("SELECT COUNT(*) FROM {nodemap} WHERE nodemap_nid=%d", $node->nid));
+            if ($iCheckNodeMap > 0) {
+                // edit table row:
+                db_query("UPDATE {nodemap} SET
+					  nodemap_latitude = %f,
+					  nodemap_longitude = %f,
+					  nodemap_address = '%s',
+					  nodemap_serialized = '%s'
+					  WHERE
+					  nodemap_nid = %d
+			",
+                sprintf('%f',$node->nodemap_latitude_field),
+                sprintf('%f',$node->nodemap_longitude_field),
+                $node->nodemap_address_field,
+                $node->nodemap_serialized_field,
+                $node->nid
+                );
+            }
+            else {
+                // insert new row:
+                db_query("INSERT INTO {nodemap} (
+					  nodemap_nid,
+					  nodemap_latitude,
+					  nodemap_longitude,
+					  nodemap_address,
+					  nodemap_serialized
+			)
+			VALUES (
+			'%d',
+			%f,
+			%f,
+			'%s',
+			'%s'
+			)",
+                $node->nid,
+                sprintf('%f',$node->nodemap_latitude_field),
+                sprintf('%f',$node->nodemap_longitude_field),
+                $node->nodemap_address_field,
+                $node->nodemap_serialized_field
+                );
+            }
+            break;
+    }
+}
+/**
+ * Implementation of hook_form_alter().
+ */
+function nodemap_form_alter(&$form, &$form_state, $form_id) {
+    $node = $form['#node'];
+    // check if edit permissions exist,
+    // nodemap module is enabled on this node type,
+    // api key is present:
+    $iEnableNodeType = 1;
+    $aNodeMapEnabledNodeTypes = variable_get('nodemap_enabled_nodetypes', array('story'=>'story'));
+    if (!isset($aNodeMapEnabledNodeTypes[$node->type]) || $aNodeMapEnabledNodeTypes[$node->type] == '0') {
+        $iEnableNodeType = 0;
+    }
+    $sYahooApiKey = variable_get('nodemap_yahoo_api_key', '');
+    if (user_access("edit node map") &&
+    $iEnableNodeType==1 &&
+    !empty($sYahooApiKey)
+    ) {
+        // add js scripts:
+        drupal_set_html_head('<script type="text/javascript" src="http://api.maps.yahoo.com/ajaxymap?v=3.8&appid='.variable_get('nodemap_yahoo_api_key', '').'"></script>');
+        $sStaticJs = "";
+		$sStaticJs .= 'jQuery.extend(Drupal.settings, '.drupal_to_js(array (
+		  'nodemap' => array (
+		      'base_path' => base_path(),
+		      'def_edit_map_location' => check_plain(variable_get('nodemap_default_map_location', "Atomium Square 1020, Brussels, Belgium")),
+		      'def_edit_map_zoom' => variable_get('nodemap_default_map_zoom_level', 5),
+		      'def_edit_map_type' => variable_get('nodemap_default_map_type', "map")
+		  )
+		)).');'."";
+		drupal_add_js($sStaticJs, 'inline', 'header', FALSE, FALSE);
+		drupal_add_js(drupal_get_path('module','nodemap')."/js/nodemap.js",'theme');
+		drupal_add_js(drupal_get_path('module','nodemap')."/js/nodemap_yahoo.js",'theme');
+        // define edit form:
+        $form['nodemap_fieldset'] = array (
+        '#type' => 'fieldset',
+        '#title' => t('Node map'),
+        '#collapsible' => TRUE,
+        '#description' => t('You can choose between 3 ways to map/locate a node:<br/>- <i>Location search</i><br/>- <i>Map</i><br/>- <i>Manual geocode input</i><br/>Use the one suited for your needs.'),
+        '#prefix' => '',
+        '#suffix' => '',
+        '#weight' => 101
+        );
+
+        $form['nodemap_fieldset']['nodemap_location_fieldset'] = array (
+        '#type' => 'fieldset',
+        '#title' => t('Location search'),
+        '#collapsible' => TRUE,
+        /*'#prefix' => '<table><tr><td align="left" valign="top">',*/
+		'#prefix' => '',
+		/*'#suffix' => '</td><td align="left" valign="top">'*/
+		'#suffix' => ''
+        );
+        $form['nodemap_fieldset']['nodemap_geocodes_fieldset'] = array (
+        '#type' => 'fieldset',
+        '#title' => t('Manual geocode input'),
+        '#collapsible' => TRUE,
+        '#prefix' => '',
+		/*'#suffix' => '</td></tr>'*/
+		'#suffix' => ''
+        );
+        $form['nodemap_fieldset']['nodemap_map_container_fieldset'] = array (
+        '#type' => 'fieldset',
+        '#title' => t('Map'),
+        '#collapsible' => TRUE,
+        '#description' => t('Move the mouse cursor to your desired location & double-click to get the coordinates.'),
+        /*'#prefix' => '<tr><td colspan="2" align="left" valign="top">',*/
+		'#prefix' => '',
+		/*'#suffix' => '</td></tr></table>'*/
+		'#suffix' => ''
+        );
+        $form['nodemap_fieldset']['nodemap_map_container_fieldset']['nodemap_map_container_div'] = array (
+        '#type' => 'markup',
+        '#value' => '<div id="nodemap_map_container" style="width:'.variable_get('nodemap_container_width', 600).'px; height:'.variable_get('nodemap_container_height', 450).'px; margin:1px;"></div>'
+        );
+
+        $form['nodemap_fieldset']['nodemap_location_fieldset']['nodemap_address_field'] = array (
+        '#type' => 'textfield',
+        '#title' => t('Address'),
+        '#description' => t('Type an address for geocode search and click "Search location", just like @ '.l(t('!Yahoo Maps'), 'http://maps.yahoo.com/', array('attributes'=>array('target'=>'_blank'), 'absolute'=>TRUE)).' or, if enbled, ').l(t('Google Maps'), 'http://maps.google.com/', array('attributes'=>array('target'=>'_blank'), 'absolute'=>TRUE)).'.',
+        '#default_value' => $node->nodemap_address_field,
+        '#prefix' => '',
+        '#suffix' => '',
+        '#size' => 10,
+        '#maxlength' => 255
+        );
+        $form['nodemap_fieldset']['nodemap_location_fieldset']['nodemap_location_button'] = array (
+        '#type' => 'button',
+        '#title' => t('Search location'),
+        '#description' => t(''),
+        '#default_value'=>t('Search location'),
+        '#prefix' => '',
+        '#suffix' => '<br/><div id="nodemap_search_locations_list_container" style="display:none;"></div>',
+        '#attributes' => array('onclick'=>'this.type="button"; nodemap_get_address_geocodes();')
+        );
+
+        $form['nodemap_fieldset']['nodemap_geocodes_fieldset']['nodemap_latitude_field'] = array (
+        '#type' => 'textfield',
+        '#title' => t('Latitude'),
+        '#description' => t(''),
+        '#default_value' => $node->nodemap_latitude_field,
+        '#prefix' => '',
+        '#suffix' => ''
+        );
+        $form['nodemap_fieldset']['nodemap_geocodes_fieldset']['nodemap_longitude_field'] = array (
+        '#type' => 'textfield',
+        '#title' => t('Longitude'),
+        '#description' => t(''),
+        '#default_value' => $node->nodemap_longitude_field,
+        '#prefix' => '',
+        '#suffix' => ''
+        );
+        $form['nodemap_fieldset']['nodemap_geocodes_fieldset']['nodemap_geocodes_button'] = array (
+        '#type' => 'button',
+        '#title' => t('Locate on map'),
+        '#description' => t(''),
+        '#default_value' => t('Locate on map'),
+        '#prefix' => '',
+        '#suffix' => '',
+        '#attributes' => array('onclick'=>'this.type="button"; nodemap_manual_marker(1);')
+        );
+        $form['nodemap_fieldset']['nodemap_geocodes_fieldset']['nodemap_serialized_field'] = array (
+        '#type' => 'hidden',
+        '#default_value' => $node->nodemap_serialized_field,
+        );
+
+    }
+}
+/**
+ * Get geocodes from yahoo:
+ */
+function nodemap_get_address_geocodes($time=0, $address) {
+    // define response array:
+    $aResults = array();
+    $aResults['status'] = 0;
+    $aResults['text'] = '';
+    $aResults['geocode_data'] = array();
+    // define geocode data arrays:
+    $aResults['geocode_data']['yahoo'] = array();
+    $aResults['geocode_data']['google'] = array();
+    // check if edit permissions exist:
+    if (user_access("edit node map")) {
+        // handle google geocoding:
+        // check if yahoo api key is present:
+        $sYahooApiKey = variable_get('nodemap_yahoo_api_key', '');
+        if (!empty($sYahooApiKey)) {
+            // request from yahoo geocode service:
+            $sYahooRequestURL = "http://local.yahooapis.com/MapsService/V1/geocode?appid=".$sYahooApiKey."&location=".drupal_urlencode($address)."&output=php";
+            $oYahooHttpRequest = drupal_http_request($sYahooRequestURL, array(), "GET", "", 0);
+            $aYahooGeocodeResults = unserialize($oYahooHttpRequest->data);
+            if ($aYahooGeocodeResults) {
+                //
+                if (!isset($aYahooGeocodeResults['ResultSet']['Result'][0]['Latitude'])) {
+                    $aTemp = $aYahooGeocodeResults['ResultSet']['Result'];
+                    $aYahooGeocodeResults['ResultSet']['Result'] = array();
+                    $aYahooGeocodeResults['ResultSet']['Result'][0] = $aTemp;
+                    unset($aTemp);
+                }
+                foreach ($aYahooGeocodeResults['ResultSet']['Result'] as $aYahooGeoResult) {
+                    $aTemp = array (
+                    'precision' => $aYahooGeoResult['precision'],
+                    'latitude' => $aYahooGeoResult['Latitude'],
+                    'longitude' => $aYahooGeoResult['Longitude'],
+                    'address' => check_plain($aYahooGeoResult['Address']),
+                    'city' => check_plain($aYahooGeoResult['City']),
+                    'state' => $aYahooGeoResult['State'],
+                    'zip' => $aYahooGeoResult['Zip'],
+                    'country' => $aYahooGeoResult['Country']
+                    );
+                    // add to results array:
+                    $aTemp['serialized'] = serialize($aTemp);
+                    $aResults['geocode_data']['yahoo'][] = $aTemp;
+                    unset($aTemp);
+                }
+            }
+        }
+        // handle google geocoding:
+        // check if google geocoding service is enabled:
+        $iUseGoogleGeocodingService = variable_get('nodemap_use_google_geocode', 0);
+        // also, check if the json_decode() function is defined (only in PHP 5 >= 5.2.0)
+        if ($iUseGoogleGeocodingService==1 && function_exists('json_decode')) {
+            // check if yahoo api key is present:
+            $sGoogleApiKey = variable_get('nodemap_google_api_key', '');
+            if (!empty($sGoogleApiKey)) {
+                // request from yahoo geocode service:
+                $sGoogleRequestURL = "http://maps.google.com/maps/geo?q=".drupal_urlencode($address)."&output=json&key=".$sGoogleApiKey;
+                $oGoogleHttpRequest = drupal_http_request($sGoogleRequestURL, array(), "GET", "", 0);
+                $oGoogleGeocodeResults = json_decode($oGoogleHttpRequest->data);
+                if (isset($oGoogleGeocodeResults->Placemark)) {
+                    foreach ($oGoogleGeocodeResults->Placemark as $aGoogleGeoResult) {
+                        $aTemp = array (
+                        'precision' => $aGoogleGeoResult->AddressDetails->Accuracy,
+                        'latitude' => $aGoogleGeoResult->Point->coordinates[1],
+                        'longitude' => $aGoogleGeoResult->Point->coordinates[0],
+                        'address' => check_plain($aGoogleGeoResult->address),
+                        'city' => '',
+                        'state' => $aGoogleGeoResult->AddressDetails->Country->AdministrativeArea->AdministrativeAreaName,
+                        'zip' => '',
+                        'country' => $aGoogleGeoResult->AddressDetails->Country->CountryNameCode
+                        );
+                        // handle city & zipcode:
+                        if (isset($aGoogleGeoResult->AddressDetails->Country->AdministrativeArea->SubAdministrativeArea)) {
+                            $aTemp['city'] = check_plain($aGoogleGeoResult->AddressDetails->Country->AdministrativeArea->SubAdministrativeArea->Locality->LocalityName);
+                            $aTemp['zip'] = $aGoogleGeoResult->AddressDetails->Country->AdministrativeArea->SubAdministrativeArea->Locality->PostalCode->PostalCodeNumber;
+                        }
+                        else {
+                            $aTemp['city'] = check_plain($aGoogleGeoResult->AddressDetails->Country->AdministrativeArea->Locality->LocalityName);
+                            $aTemp['zip'] = $aGoogleGeoResult->AddressDetails->Country->AdministrativeArea->Locality->PostalCode->PostalCodeNumber;
+                        }
+                        // add to results array:
+                        $aTemp['serialized'] = serialize($aTemp);
+                        $aResults['geocode_data']['google'][] = $aTemp;
+                        unset($aTemp);
+                    }
+                }
+            }
+        }
+        if (count($aResults['geocode_data']['yahoo'])>0 || count($aResults['geocode_data']['google'])>0) {
+            // prepare response:
+            $aResults['status'] = 1;
+            $aResults['text'] = t('Here is a list of locations. Click the one closest to your needs.');
+        }
+        else {
+            $aResults['status'] = 0;
+            $aResults['text'] = t('Could not find a match for this location anywhere. Please check your spelling or try looking for a different location.');
+        }
+    }
+    else {
+        $aResults['status'] = 0;
+        $aResults['text'] = t('No permissions to complete this request.');
+    }
+    // print json encoded string:
+    print drupal_to_js($aResults);
+    //print "<pre>".print_r($aResults, true)."</pre>";
+    exit();
+}
+/**
+ * function that loads/gets a map for a given node
+ * returns an array populated with map render string->['content'] & details->['details']
+ *
+ * @param object $oNode
+ * @param bool $iReturnDetails
+ * @param bool $iShowNodeTitle
+ * @param bool $iShowAddress
+ * @param bool $iReturnMap
+ * @param bool $iBypassPerm
+ * @param array $aMapSettings
+ * @return array
+ */
+function nodemap_load_map($oNode, $iReturnDetails=false, $iShowNodeTitle=true, $iShowAddress=true, $iReturnMap=true, $iBypassPerm=false, $aMapSettings=array()) {
+    $sYahooApiKey = variable_get('nodemap_yahoo_api_key', '');
+    if (empty($sYahooApiKey)) {
+        return false;
+    }
+    $aRender = array();
+    $aRender['content'] = 0;
+    $aRender['details'] = 0;
+    $node = $oNode;
+    // check if edit permissions exist,
+    // nodemap module is enabled on this node type,
+    // api key is present:
+    $aNodeMapEnabledNodeTypes = variable_get('nodemap_enabled_nodetypes', array('story'=>'story'));
+    if (!isset($aNodeMapEnabledNodeTypes[$node->type]) || $aNodeMapEnabledNodeTypes[$node->type] == '0') {
+        return false;
+    }
+    if ($iBypassPerm===false) {
+        if (!user_access("view node map block")) {
+            return false;
+        }
+    }
+    if ($iReturnMap===true) {
+        if (isset($node->nodemap_latitude_field) &&
+        isset($node->nodemap_longitude_field) &&
+        !empty($node->nodemap_latitude_field) &&
+        !empty($node->nodemap_longitude_field)
+        ) {
+            // prepare settings, if defined:
+            $iMapWidth  = 0;
+            $iMapHeight = 0;
+            $sMapType   = '';
+            $iMapZoom   = 0;
+            if (count($aMapSettings)!==0) {
+                $iMapWidth  = (int)$aMapSettings['width'];
+                $iMapHeight = (int)$aMapSettings['height'];
+                $sMapType   = $aMapSettings['type'];
+                $iMapZoom   = (int)$aMapSettings['zoom'];
+            }
+            // reset to defaults if invalid values found:
+            $iMapWidth  = ($iMapWidth==0?variable_get('nodemap_node_block_view_container_width', 400):$iMapWidth);
+            $iMapHeight = ($iMapHeight==0?variable_get('nodemap_node_block_view_container_height', 350):$iMapHeight);
+            $sMapType   = (empty($sMapType)?check_plain(variable_get('nodemap_node_block_view_default_map_type', "map")):$sMapType);
+            $iMapZoom   = ($iMapZoom==0?variable_get('nodemap_node_block_view_default_map_zoom_level', 5):$iMapZoom);
+            // add yahoo api .js, just once ;)
+            if (strpos(drupal_get_html_head(), $sYahooApiKey) === FALSE ) {
+                drupal_set_html_head('<script type="text/javascript" src="http://api.maps.yahoo.com/ajaxymap?v=3.8&appid='.$sYahooApiKey.'"></script>');
+            }
+            // nodemap .js & .css scripts:
+            drupal_add_js(drupal_get_path('module','nodemap')."/js/nodemap_rendermaps.js", 'theme');
+            drupal_add_css(drupal_get_path('module','nodemap')."/css/nodemap.css", 'theme');
+            // prepare html map container:
+            $sMapContainer = '<div id="nodemap_map_'.$node->nid.'" style="width:'.$iMapWidth.'px; height:'.$iMapHeight.'px;" class="nodemap-map-render"></div>'."\n";
+            // & javascript:
+            $sMapContainer .= '<script type="text/javascript">'."\n";
+            $sMapContainer .= 'var nmMap_'.$node->nid.' = new YMap(document.getElementById("nodemap_map_'.$node->nid.'"));'."\n";
+            $sMapContainer .= 'if (Drupal.jsEnabled) {'."\n";
+            $sMapContainer .= ' 	$(document).ready(function () {'."\n";
+            $sMapContainer .= ' 		nodemap_yahoo_render(nmMap_'.$node->nid.', "'.$node->nodemap_latitude_field.'", "'.$node->nodemap_longitude_field.'","'.$sMapType.'","'.$iMapZoom.'","'.($iShowNodeTitle===true?check_plain($node->title):'').'","'.($iShowAddress===true?check_plain($node->nodemap_address_field):'').'");'."\n";
+            $sMapContainer .= ' 	});'."\n";
+            $sMapContainer .= '}'."\n";
+            $sMapContainer .= '</script>'."\n";
+            // overwrite content key:
+            $aRender['content'] = $sMapContainer;
+        }
+    }
+    // handle location details:
+    if ($iReturnDetails===true) {
+        $sNodeViewBlockLocationDetails = "";
+        if (isset($node->nodemap_serialized_field) && !empty($node->nodemap_serialized_field)) {
+            $aNodemapGeoDetails = @unserialize($node->nodemap_serialized_field);
+            if (isset($aNodemapGeoDetails)) {
+                foreach ($aNodemapGeoDetails as $key=>$value) {
+                    if (!empty($value)) {
+                        $sNodeViewBlockLocationDetails .= "<i>".ucfirst($key)."</i>: ".$value."<br/>";
+                    }
+                }
+            }
+        }
+    }
+    if ($iReturnDetails===true & !empty($sNodeViewBlockLocationDetails)) {
+        $aRender['details'] = '<div>'.$sNodeViewBlockLocationDetails.'</div>';
+    }
+    // return array:
+    return $aRender;
+}
+/**
+ * Implementation of hook_block().
+ */
+function nodemap_block($op = 'list', $delta = 0) {
+	switch ($op) {
+		case 'list':
+		$info[0]['info'] = t('Node Map node-view');
+		return $info;
+		break;
+
+		case 'view':
+		// check if it's a node, else return:
+		if (arg(0) != 'node' && !is_numeric($nid)) {
+			return;
+		}
+		$nid = arg(1);
+		$node = node_load(array('nid'=>$nid));
+		$aMapRender = nodemap_load_map($node, true, (variable_get('nodemap_node_block_view_show_title', 1)==1?true:false), (variable_get('nodemap_node_block_view_show_address', 1)==1?true:false));
+		if (isset($aMapRender) && is_array($aMapRender) && ($aMapRender['content'] !== 0)) {
+			// block html array:
+			$aNodeViewBlock['nodemap_nodeview_block_fieldset'] = array (
+			'#type' => 'fieldset',
+			'#title' => t('Node Map'),
+			'#collapsible' => TRUE
+			);
+			$aNodeViewBlock['nodemap_nodeview_block_fieldset']['nodemap_nodeview_block_map_container_div'] = array (
+			'#type' => 'markup',
+			'#value' => $aMapRender['content'],
+			'#weight' => -5
+			);
+			// add location details html array:
+			if (!empty($aMapRender['details'])) {
+				$aNodeViewBlock['nodemap_nodeview_block_fieldset']['nodemap_nodeview_block_location_details_fieldset'] = array (
+				'#type' => 'fieldset',
+				'#title' => t('Details'),
+				'#collapsible' => TRUE,
+				'#collapsed' => TRUE,
+				'#weight' => -4
+				);
+				$aNodeViewBlock['nodemap_nodeview_block_fieldset']['nodemap_nodeview_block_location_details_fieldset']['nodemap_nodeview_block_location_details_container'] = array (
+				'#type' => 'markup',
+				'#value' => $aMapRender['details']
+				);
+			}
+			//$block['subject'] = t('Node Map');
+			$block['content'] = drupal_render($aNodeViewBlock);
+			return $block;
+		}
+		break;
+	}
+}
+/**
+* Implementation of hook_views_api().
+*/
+function nodemap_views_api() {
+    return array('api' => 2.0);
+}

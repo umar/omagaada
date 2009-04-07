@@ -1,0 +1,172 @@
+<?php
+// $Id: marksmarty.module,v 1.21 2008/01/22 22:25:27 weitzman Exp $
+
+/********************************************************************
+ * Drupal Hooks
+ ********************************************************************/
+
+function marksmarty_filter($op, $delta = 0, $format = -1, $text = '') {
+  switch ($op) {
+    case 'list':
+      return array(t('Markdown with SmartyPants'));
+
+    case 'description':
+      return t('Allows content to be submitted using Markdown, a simple plain-text syntax that is filtered into valid XHTML, and converts plain ASCII characters to Unicode entities using SmartyPants.');
+
+    case 'settings':
+      return _marksmarty_settings($format);
+
+    case 'process':
+      return _marksmarty_process($text, $format);
+
+    default:
+      return $text;
+  }
+}
+
+function marksmarty_block($op = 'list', $delta = 0, $edit = array()) {
+  if ($op == 'list') {
+    $blocks[0] = array('info' => t('Marksmarty Filter Tips'));
+    return $blocks;
+  }
+  else if ($op == 'view') {
+    switch($delta) {
+      case 0:
+        $block = array('subject' => t('Title of block #1'),
+                       'content' => marksmarty_display_block_1());
+        break;
+    }
+    return $block;
+  }
+}
+
+function marksmarty_display_block_1(){
+  $content = <<<END_MARKSMARTY_BLOCK
+<pre>
+## Header 2 ## 
+### Header 3 ###  
+#### Header 4 ####
+##### Header 5 #####
+(Hashes on right are optional)
+
+Link [Drupal](http://drupal.org)
+
+Inline markup like _italics_, 
+ **bold**, and `code()`.
+
+> Blockquote. Like email replies
+>> And, they can be nested
+
+* Bullet lists are easy too
+- Another one
++ Another one
+
+1. A numbered list
+2. Which is numbered
+3. With periods and a space
+
+And now some code:
+    // Code is indented text
+    is_easy() to_remember();
+                            </pre>
+END_MARKSMARTY_BLOCK;
+
+  return $content;
+
+}
+
+function marksmarty_filter_tips($delta = 0, $format = -1, $long) {
+  if ($long) {
+    $the_output = t('Quick Tips:<ul>
+      <li>Two or more spaces at a line\'s end = Line break</li>
+      <li>Double returns = Paragraph</li>
+      <li>*Single asterisks* or _single underscores_ = <em>Emphasis</em></li>
+      <li>**Double** or __double__ = <strong>Strong</strong></li>
+      <li>This is [a link](http://the.link.com "The optional title text")</li>
+      </ul>For complete details on the Markdown syntax, see the <a href="http://daringfireball.net/projects/markdown/syntax">Markdown documentation</a> and <a href="http://michelf.com/projects/php-markdown/extra/">Markdown Extra documentation</a> for tables, footnotes, and more.');
+  }
+  else {
+    $the_output = t('You can use !link to format and style the text. Also see and <a href="http://michelf.com/projects/php-markdown/extra/">Markdown Extra</a> for tables, footnotes, and more.', array('!link' => l(t('Markdown syntax'), 'filter/tips')));
+  }
+
+  return $the_output;
+}
+
+function marksmarty_help($path = 'admin/help#marksmarty', $arg) {
+  switch ($path) {
+    case 'admin/settings/modules#description':
+      $the_output = t('Allows content to be submitted using Markdown, a simple plain-text syntax that is transformed into valid XHTML, and/or using SmartyPants, a filter for auto-translating plain ASCII characters to Unicode characters.');
+      break;
+
+    case 'admin/help#marksmarty':
+      $the_output = t('<p>The Markdown with SmartyPants module allows you to enter content using <a href="http://daringfireball.net/projects/markdown">Markdown</a>, a simple plain-text syntax that is transformed into valid XHTML, and will automatically convert plain ASCII characters to their proper Unicode entities in context ("curly quotes," et al.) using <a href="http://daringfireball.net/projects/smartypants">SmartyPants</a>.</p>');
+      break;
+  }
+  if (isset($the_output)) {
+    return $the_output;
+  }
+}
+
+/********************************************************************
+ * Module Functions
+ ********************************************************************/
+
+function _marksmarty_process($text, $format) {
+  require_once(dirname(__FILE__) .'/markdown.php');
+  require_once(dirname(__FILE__) .'/smartypants.php');
+  if (variable_get("marksmarty_is_markdown_on_$format", 1) == 1) {
+    $text = Markdown($text);
+  }
+  if (variable_get("marksmarty_is_smarty_on_$format", 1) == 1) {
+    global $smartypants_attr;
+    $smartypants_attr = variable_get("marksmarty_smarty_hyphens_$format", 0) + 1;
+    $text = SmartyPants($text);
+  }
+  return $text;
+}
+
+function _marksmarty_settings($format) {
+  require_once(dirname(__FILE__) .'/markdown.php');
+  require_once(dirname(__FILE__) .'/smartypants.php');
+  $form['markdown_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Markdown with SmartyPants'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+  $form['markdown_settings']['help'] = array(
+    '#type' => 'markup',
+    '#value' => '<p>Please read the <a href="http://daringfireball.net/projects/markdown/syntax">Markdown documentation</a> for full details on its formatting syntax.</p>',
+  );
+  $form['markdown_settings']["marksmarty_is_markdown_on_$format"] = array(
+    '#type' => 'select',
+    '#title' => t('Enable Markdown?'),
+    '#default_value' => variable_get("marksmarty_is_markdown_on_$format", 1),
+    '#options' => array(0 => t('No'), 1 => t('Yes')),
+  );
+  $form['markdown_settings']["marksmarty_is_smarty_on_$format"] = array(
+    '#type' => 'select',
+    '#title' => t('Enable SmartyPants?'),
+    '#default_value' => variable_get("marksmarty_is_smarty_on_$format", 1),
+    '#options' => array(0 => t('No'), 1 => t('Yes')),
+  );
+  $form['markdown_settings']["marksmarty_smarty_hyphens_$format"] = array(
+    '#type' => 'select',
+    '#title' => t('Hyphenation settings for SmartyPants'),
+    '#default_value' => variable_get("marksmarty_smarty_hyphens_$format", 0),
+    '#options' => array(0 => t('"--" for em-dashes; no en-dash support'), 1 => t('"---" for em-dashes; "--" for en-dashes'), 2 => t('"--" for em-dashes; "---" for en-dashes')),
+  );
+
+  $links[] = 'Markdown PHP Version: <a href="http://www.michelf.com/projects/php-markdown/">'. MARKDOWN_VERSION .'</a>';
+  $links[] .= 'Markdown Extra Version: '. MARKDOWNEXTRA_VERSION;
+  $links[] .= 'SmartyPants PHP Version: <a href="http://www.michelf.com/projects/php-smartypants/">'. $GLOBALS['SmartyPantsPHPVersion'] .'</a>';
+  $links[] .= 'SmartyPants Syntax Version: '. $GLOBALS['SmartyPantsSyntaxVersion'];
+
+  $form['markdown_settings']['markdown_status'] = array(
+    '#title' => t('Versions'),
+    '#type' => 'item',
+    '#value' => theme('item_list', $links),
+  );
+
+  return $form;
+}

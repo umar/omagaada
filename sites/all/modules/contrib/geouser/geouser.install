@@ -1,0 +1,87 @@
+<?php
+// $Id: geouser.install,v 1.9 2009/02/15 17:23:19 zidong Exp $
+
+/**
+ * Implement hook_install()
+ *
+ */
+function geouser_install(){
+
+  if(!db_table_exists('geouser')){
+
+    drupal_install_schema('geouser');
+  }
+}
+
+/**
+ * Implementation of hook_schema()
+ *
+ */
+function geouser_schema(){
+
+  $schema['geouser'] = array(
+   'description' => t("The table for storing user locations"),
+   'fields' => array(
+      'uid' => array(
+        'description' => t("Drupal User ID"),
+        'type' => 'int',
+        'unsigned' => TRUE, 
+        'not null' => TRUE, 
+        'disp-width' => '10'
+        ),
+      'addr' => array(
+        'description' => t("User's IP address when last logged in"),
+        'type' => 'varchar', 
+        'length' => '32', 
+        'not null' => TRUE
+        ),
+      'country' => array(
+
+        'description' => t("User's country returned from GeoIP"),
+      'type' => 'varchar', 
+        'length' => '32', 
+        'not null' => TRUE
+        ),
+      'region' => array(
+        'description' => t("User's region returned from GeoIP"),
+        'type' =>'varchar',
+        'length' => '32',
+        'not null' => TRUE
+        ),
+      'city' => array(
+        'description' => t("User's city returned from GeoIP"),
+        'type' => 'varchar', 
+        'length' => '32', 
+        'not null' => TRUE
+        )
+        ),
+    'primary key' => array('uid'),
+        );
+        return $schema;
+
+}
+
+/**
+ * Implement hook_uninstall()
+ *
+ */
+function geouser_uninstall(){
+
+}
+
+/**
+ * Implement hook_update_N()
+ *
+ */
+function geouser_update_6000(){
+  $ret = array();
+  db_add_field($ret, 'geouser', 'region', array(
+      'description' => t("User's region returned from GeoIP"),
+      'type' =>'varchar',
+      'length' => '32',
+      'not null' => TRUE
+  )
+  );
+  return $ret;
+}
+

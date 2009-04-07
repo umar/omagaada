@@ -1,0 +1,616 @@
+<?php
+define ('NODE2NODE_EXTRA_ROWS', 3);
+
+/**
+* Implementation of hook_perm
+*/
+function node2node_perm() {
+   return array(
+      'administer node2node',
+   );
+}
+
+/**
+* Implementation of hook_menu()
+*/
+function node2node_menu () {
+	return array(
+		'admin/settings/node2node' => array(
+			'title' => 'Node 2 Node administration',
+			'description' => 'Settings for the Node 2 Node module',
+			'page callback' => 'drupal_get_form',
+			'page arguments' => array('node2node_admin'),
+			'access arguments' => array('administer node2node'),
+			'type' => MENU_NORMAL_ITEM,
+		),
+   );
+}
+      
+/**
+* Adminstration form
+*/
+function node2node_admin() {
+   // get a list of node types
+   $nodelist = array('' => '');
+   $res = db_query('SELECT type, name FROM {node_type} ORDER BY name');
+   while ($row = db_fetch_array($res)) {
+      $nodelist[$row['type']] = $row['name'];
+   }
+   // how many relationships are there?
+   $numrels = variable_get('node2node_relationships_count', 0);
+   $numrows = $numrels + 3;
+   for ($i = 0; $i < $numrels + NODE2NODE_EXTRA_ROWS; $i++) {
+      $form['relationship'.$i] = array(
+         '#title' => 'Relationship '.($i + 1),
+         '#type' => 'fieldset',
+      );
+      $form['relationship'.$i]['node2node_parent'.$i] = array(
+         '#title' => 'Parent',
+         '#type' => 'select',
+         '#options' => $nodelist,
+         '#default_value' => variable_get('node2node_parent'.$i, ''),
+         '#prefix' => '<table><tr><td>',
+      );
+      $form['relationship'.$i]['node2node_name'.$i] = array(
+         '#title' => 'Name of relationship',
+         '#type' => 'textfield',
+         '#default_value' => variable_get('node2node_name'.$i, 'has'),
+         '#size' => 30,
+         '#prefix' => '<td>',
+      );
+      $form['relationship'.$i]['node2node_iname'.$i] = array(
+         '#title' => 'Inverse name',
+         '#type' => 'textfield',
+         '#default_value' => variable_get('node2node_iname'.$i, 'belongs to'),
+         '#size' => 30,
+      );
+      $form['relationship'.$i]['node2node_child'.$i] = array(
+         '#title' => 'Child',
+         '#type' => 'select',
+         '#options' => $nodelist,
+         '#default_value' => variable_get('node2node_child'.$i, ''),
+         '#prefix' => '<td>',
+      );
+      $form['relationship'.$i]['node2node_id'.$i] = array(
+         '#title' => 'ID',
+         '#type' => 'textfield',
+         '#default_value' => variable_get('node2node_id'.$i, 'rel_'.$i),
+         '#size' => 10,
+         '#maxlength' => 10,
+         '#prefix' => '<td>',
+         '#suffix' => '</table>',
+      );
+     
+   }
+   $form['terminology'] = array(
+      '#title' => 'Terminology',
+      '#type' => 'fieldset',
+   );
+   $form['terminology']['node2node_parentlinks'] = array(
+      '#type' => 'textfield',
+      '#title' => 'Parent links',
+      '#default_value' => variable_get('node2node_parentlinks', 'Parent links'),
+   );
+   $form['terminology']['node2node_childlinks'] = array(
+      '#type' => 'textfield',
+      '#title' => 'Parent links',
+      '#default_value' => variable_get('node2node_childlinks', 'Child links'),
+   );
+   
+   $form['node2node_relationships_count'] = array(
+      '#type' => 'hidden',
+      '#value' => $numrels,
+   );
+   
+   return system_settings_form($form);
+
+}
+
+function node2node_admin_validate(&$form, &$form_state) {
+   
+   $error = false;
+   $numrows = $form_state['values']['node2node_relationships_count'];
+   $duplist = array();
+   
+   // validation pass
+   for ($i = 0; $i < ($numrows + NODE2NODE_EXTRA_ROWS); $i++) {
+      $parent = $form_state['values']['node2node_parent'.$i];
+      $name = $form_state['values']['node2node_name'.$i];
+      $iname = $form_state['values']['node2node_iname'.$i];
+      $child = $form_state['values']['node2node_child'.$i];
+      $id = $form_state['values']['node2node_id'.$i];
+      if ($parent != '') {
+         if ($child == '') {
+            form_set_error('node2node_child'.$i, t('Child node must be defined'));
+            $error = true;
+         }
+         if ($id == '') {
+            form_set_error('node2node_id'.$i, t('ID must be defined'));
+            $error = true;
+         }
+         $dupkey = $parent . '||'.$name.'||' . $child;
+         if (isset($duplist[$dupkey])) {
+            form_set_error('node2node_parent'.$i, t('Duplicated relationship'));
+            $error = true;
+         } else {
+            $duplist[$dupkey] = '';
+         }
+         $dupkey = '^^^' . $id;
+         if (isset($duplist[$dupkey])) {
+            form_set_error('node2node_id'.$i, t('Duplicated ID'));
+            $error = true;
+         } else {
+            $duplist[$dupkey] = '';
+         }
+      }
+   }
+
+   // if valid, modify the rows
+   if (!$error) {
+      $count = -1; // count the number of valid rows
+      for ($i = 0; $i < ($numrows + NODE2NODE_EXTRA_ROWS); $i++) {
+         $parent = $form_state['values']['node2node_parent'.$i];
+         $name = $form_state['values']['node2node_name'.$i];
+         $iname = $form_state['values']['node2node_iname'.$i];
+         $child = $form_state['values']['node2node_child'.$i];
+         $id = $form_state['values']['node2node_id'.$i];
+         if ($parent != '') {
+            $count++;
+            // shift the row upwards if necessary
+            if ($i != $count) {
+               $form_state['values']['node2node_parent'.$count] = $parent;
+               $form_state['values']['node2node_name'.$count] = $name;
+               $form_state['values']['node2node_iname'.$count] = $iname;
+               $form_state['values']['node2node_child'.$count] = $child;
+               $form_state['values']['node2node_id'.$count] = $id;
+               $form_state['values']['node2node_parent'.$i] = '';
+               $form_state['values']['node2node_name'.$i] = '';
+               $form_state['values']['node2node_iname'.$i] = '';
+               $form_state['values']['node2node_child'.$i] = '';
+               $form_state['values']['node2node_id'.$i] = '';
+            }
+         } else {
+         }
+      }
+      $form_state['values']['node2node_relationships_count'] = $count + 1;
+      
+      // remove additional settings
+      for ($i = $count + 1; $i <  ($numrows + NODE2NODE_EXTRA_ROWS); $i++) {
+         variable_del('node2node_parent'.$i);
+         variable_del('node2node_name'.$i);
+         variable_del('node2node_child'.$i);
+         unset($form_state['values']['node2node_parent'.$i]);
+         unset($form_state['values']['node2node_name'.$i]);
+         unset($form_state['values']['node2node_iname'.$i]);
+         unset($form_state['values']['node2node_child'.$i]);
+         unset($form_state['values']['node2node_id'.$i]);
+      }
+   }
+   
+}
+
+/**
+* Returns a list of relationship types
+* 
+* Returns:
+*  List of IDs by parent
+*  List of IDs by child
+*  Array of information by ID
+*/
+function node2node_reltypes() {
+static $reltypes;
+   if (!isset($reltypes)) {
+      $numrels = variable_get('node2node_relationships_count', 0);
+      $reltypes = array();
+      for ($i = 0; $i < $numrels; $i++) {
+         $parent = variable_get('node2node_parent'.$i, '');
+         $name = variable_get('node2node_name'.$i, '');
+         $iname = variable_get('node2node_iname'.$i, '');
+         $child = variable_get('node2node_child'.$i, '');
+         $id = variable_get('node2node_id'.$i, '');
+         $reltypes['parent'][$parent][$id] = '';
+         $reltypes['child'][$child][$id] = '';
+         $reltypes['id'][$id] = array(
+            'parent' => $parent,
+            'name' => $name,
+            'iname' => $iname,
+            'child' => $child,
+         );
+      }
+   }
+   return $reltypes;
+}
+
+/**
+* Implementation of hook_nodeapi
+*/
+function node2node_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+   $type = $node->type;
+   $reltypes = node2node_reltypes();
+   
+   switch ($op) {
+      case 'load':
+         // get child nodes
+         $child_nodes = array();
+         $res = db_query("SELECT nn.seq, nn.type, nn.child_nid, n.title, n.type AS node_type 
+            FROM {node2node} nn LEFT JOIN {node} n ON nn.child_nid=n.nid
+            WHERE nn.parent_nid=%d 
+            ORDER BY nn.seq", $node->nid);
+         while ($row = db_fetch_array($res)) {
+            $nid = $row['child_nid'];
+            // to do - put a node access check in here
+               $child_nodes[$row['seq']] = $row;
+               $child_nodes[$row['seq']]['name'] = $reltypes['id'][$row['type']]['name'];
+               $child_nodes[$row['seq']]['iname'] = $reltypes['id'][$row['type']]['iname'];
+         }
+         $node->child_nodes = $child_nodes;
+         // get parent nodes
+         $parent_nodes = array();
+         $res = db_query("SELECT nn.seq, nn.type, nn.parent_nid, n.title, n.type AS node_type 
+            FROM {node2node} nn LEFT JOIN {node} n ON nn.parent_nid=n.nid
+            WHERE nn.child_nid=%d 
+            ORDER BY nn.parent_nid", $node->nid);
+         while ($row = db_fetch_array($res)) {
+            $nid = $row['parent_nid'];
+            // to do - put a node access check in here
+               $parent_nodes[$row['parent_nid']] = $row;
+               $parent_nodes[$row['parent_nid']]['name'] = $reltypes['id'][$row['type']]['name'];
+               $parent_nodes[$row['parent_nid']]['iname'] = $reltypes['id'][$row['type']]['iname'];
+         }
+         $node->parent_nodes = $parent_nodes;
+         break;
+      case 'view':
+         $content = '';
+         $teaser = $a3;
+         if (!$teaser) {
+            if (count($node->parent_nodes)) {
+               $content .= '<div class="node2node_parent"><h3>'.t(variable_get('node2node_parentlinks', 'Parent links')).'</h3>';
+               foreach ($node->parent_nodes as $pnode) {
+                  // $content .= l($pnode['title'],'node/'.$pnode['parent_nid']) . ' (' . $pnode['node_type'] . ') ' . $pnode['name'] . ' ' . $node->title.'<br />';
+                  $content .= t('This') . ' ' . $node->type . ' ' . $pnode['iname'] . ' ' . $pnode['node_type'] . ' ' . l($pnode['title'],'node/'.$pnode['parent_nid']) . '<br />';
+               }
+               $content .= '</div>';
+            }
+            if (count($node->child_nodes)) {
+               $content .= '<div class="node2node_child"><h3>'.t(variable_get('node2node_childlinks', 'Child links')).'</h3>';
+               foreach ($node->child_nodes as $cnode) {
+                  // $content .=  $node->title . ' ' . $cnode['name'] . ' ' . l($cnode['title'], 'node/'.$cnode['child_nid']) . ' (' . $cnode['node_type'] . ') <br />';
+                  $content .= t('This') . ' ' . $node->type . ' ' . $cnode['name'] . ' ' . $cnode['node_type'] . ' ' . l($cnode['title'], 'node/'.$cnode['child_nid']) . '<br />';
+               }
+               $content .= '</div>';
+            }
+            if (node_access('update',$node)) {
+               $content .= '<h3>'.t('Link target').'</h3>' . drupal_get_form('node2node_make_target');
+            }
+            $node->content['node2node']['#value'] = $content;
+            $node->content['node2node']['#weight'] = 10;
+         }
+         break;
+      case 'insert':
+      case 'update':
+         $order = array();
+         // go through links array (prepared in node2node_form_submit)
+         if (!isset($node->links)) {$node->links = array();}
+         foreach ($node->links as $pc=>$vpc) {
+            foreach ($vpc as $key=>$value) {
+               switch ($pc) {
+                  case 'p':
+                     $checked = $value['checked'];
+                     $pnid = $value['pnid'];
+                     $pseq = $value['pseq'];
+                     $porig = $value['porig'];
+                     $ptype = $value['ptype'];
+                     // delete a parent
+                     if ($porig && !$checked) {
+                        db_query("DELETE FROM {node2node} WHERE parent_nid=%d AND type='%s' AND child_nid=%d", $pnid, $ptype, $node->nid);
+                     }
+                     // add a parent
+                     if (!$porig && $checked) {
+                        $seq = 0;
+                        $res = db_query("SELECT MAX(seq) AS seq FROM {node2node} WHERE parent_nid=%d", $pnid);
+                        $ret = db_fetch_array($res);
+                        $seq = $ret['seq'] + 1;
+                        db_query("INSERT INTO {node2node} (parent_nid, seq, type, child_nid) VALUES (%d, %d, '%s', %d)", $pnid, $seq, $ptype, $node->nid);
+                     }
+                     break;
+                  case 'c':
+                     $checked = $value['checked'];
+                     $cnid = $value['cnid'];
+                     $cseq = $value['cseq'];
+                     $corig = $value['corig'];
+                     $ctype = $value['ctype'];
+                     // delete a child
+                     if ($corig && !$checked) {
+                        db_query("DELETE FROM {node2node} WHERE child_nid=%d AND type='%s' AND parent_nid=%d", $cnid, $ctype, $node->nid);
+                     }
+                     // insert a child
+                     if (!$corig && $checked) {
+                        $seq = 0;
+                        $res = db_query("SELECT MAX(seq) AS seq FROM {node2node} WHERE parent_nid=%d", $node->nid);
+                        $ret = db_fetch_array($res);
+                        $seq = $ret['seq'] + 1;
+                        db_query("INSERT INTO {node2node} (parent_nid, seq, type, child_nid) VALUES (%d, %d, '%s', %d)", $node->nid, $seq, $ctype, $cnid);
+                     }
+                     // set order for checked children
+                     if ($checked) {
+                        $order[$cseq][] = $ctype.'^^^'.$cnid;
+                     }
+                     break;
+               }
+            }
+         }
+         // update the order of children
+         $i = 0;
+         db_query("UPDATE {node2node} SET seq=seq+10000 WHERE parent_nid=%d", $node->nid);
+         ksort($order, SORT_NUMERIC);
+         foreach ($order as $seq=>$value) {
+            foreach ($value as $seq1=>$value1) {
+               $keys = explode('^^^', $value1);
+               $type = $keys[0];
+               $cnid = $keys[1];
+               $i++;
+               db_query("UPDATE {node2node} SET seq=%d WHERE parent_nid=%d AND type='%s' AND child_nid=%d", $i, $node->nid, $type, $cnid);
+            }
+         }
+         break;
+      case 'delete':
+         // delete all relationships connected with this node
+         db_query("DELETE FROM {node2node} WHERE parent_nid=%d OR child_nid=%d", $node->nid, $node->nid);
+   }
+}
+
+/**
+* Form to set this node as target
+*/
+function node2node_make_target() {
+   $nid = arg(1);
+   if ($nid != $_SESSION['node2node']['nid']) {
+      $form['desc'] = array(
+         '#value' => t('Set this node to be the target node so that other nodes can be associated with it '),
+      );
+      $form['maketarget'] = array (
+         '#type' => 'submit',
+         '#value' => 'Make target',
+      );
+   } else {
+      $form['desc'] = array(
+         '#value' => t('This node is the current target - when editing other nodes, you can associate them with this one.'),
+      );
+   }
+   return $form;
+}
+function node2node_make_target_submit() {
+   $nid = arg(1);
+   $node = node_load($nid);
+   $_SESSION['node2node']['nid'] = $nid;
+   $_SESSION['node2node']['type'] = $node->type;
+   $_SESSION['node2node']['title'] = $node->title;
+}
+
+/**
+* Implementation of hook_form
+*/
+function node2node_form_alter(&$form, $form_state, $form_id)  {
+   // get node information
+   $node = $form['#node'];
+   $nid = $node->nid;
+   $type = $node->type;
+
+   // flag to say we have modded the form
+   $modded = false;
+   
+   // get the list of relationship types
+   $reltypes = node2node_reltypes();
+   
+   // index the parent and child nodes to avoid adding twice
+   $ind = array();
+   if (isset($node->parent_nodes)) {
+      foreach ($node->parent_nodes as $k=>$pnode) {
+         $ind[$pnode['type']][$pnode['parent_nid']] = '';
+      }
+   }
+   if (isset($node->child_nodes)) {
+      foreach ($node->child_nodes as $k=>$cnode) {
+         $ind[$cnode['type']][$cnode['child_nid']] = '';
+      }
+   }
+   
+   // list of possible parent relationships
+   $pp = array();
+   if ($nid != $_SESSION['node2node']['nid']) {
+      foreach ($reltypes['id'] as $id=>$rel) {
+         if ($rel['parent'] == $_SESSION['node2node']['type'] && $rel['child'] == $node->type && !isset($ind[$id][$_SESSION['node2node']['nid']])) {
+            $node->parent_nodes[] = array(
+               'seq' => '',
+               'type' => $id,
+               'parent_nid' => $_SESSION['node2node']['nid'],
+               'title' =>  $_SESSION['node2node']['title'],
+               'node_type' => $_SESSION['node2node']['type'],
+               'name' => $rel['name'],
+               'potential' => true,
+            );
+         } elseif ($rel['child'] == $_SESSION['node2node']['type'] && $rel['parent'] == $node->type && !isset($ind[$id][$_SESSION['node2node']['nid']])) {
+            $node->child_nodes[] = array(
+               'seq' => '',
+               'type' => $id,
+               'child_nid' => $_SESSION['node2node']['nid'],
+               'title' =>  $_SESSION['node2node']['title'],
+               'node_type' => $_SESSION['node2node']['type'],
+               'name' => $rel['name'],
+               'potential' => true,
+            );
+         }
+      }
+   }
+   
+   // list the parent nodes
+   if (count($node->parent_nodes)) {
+      $modded = true;
+      $form['node2nodeparents'] = array(
+         '#type' => 'fieldset',
+         '#collapsible' => true,
+         '#title' => t('This node is a child of the checked nodes (uncheck to remove, check to add):'),
+      );
+      $form['node2nodeparents'][] = array(
+         '#value' => '<table><tr><th>'.t('Parent node').'<th>'.t('Type').'<th>'.T('Relationship').'<th>'.t('This node').'<th>'.t('Check'),
+      );
+      $i = 0;
+      foreach ($node->parent_nodes as $k=>$pnode) {
+         $form['node2nodeparents']['p_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => $i,
+         );
+         $form['node2nodeparents'][] = array(
+            '#prefix' => '<tr><td>',
+            '#value' => $pnode['title'],
+            '#suffix' => '</td>',
+         );
+         $form['node2nodeparents'][] = array(
+            '#prefix' => '<td>',
+            '#value' => $pnode['node_type'],
+            '#suffix' => '</td>',
+         );
+         $form['node2nodeparents'][] = array(
+            '#prefix' => '<td>',
+            '#value' => $pnode['name'],
+            '#suffix' => '</td>',
+         );
+         $form['node2nodeparents'][] = array(
+            '#prefix' => '<td>',
+            '#value' => $node->title,
+            '#suffix' => '</td>',
+         );
+         $form['node2nodeparents']['pcheck_'.$i] = array(
+            '#prefix' => '<td>',
+            '#type' => 'checkbox',
+            '#default_value' => !isset($pnode['potential']),
+            '#suffix' => '</td></tr>',
+         );
+         $form['node2nodeparents']['pnid_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => $pnode['parent_nid'],
+         );
+         $form['node2nodeparents']['pseq_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => $pnode['seq'],
+         );
+         $form['node2nodeparents']['porig_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => !isset($pnode['potential']),
+         );
+         $form['node2nodeparents']['ptype_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => $pnode['type'],
+         );
+         $i++;
+      }
+      $form['node2nodeparents'][] = array(
+         '#value' => '</table>',
+      );
+   }
+   // list the child nodes
+   if (count($node->child_nodes)) {
+      $modded = true;
+      $form['node2nodechildren'] = array(
+         '#type' => 'fieldset',
+         '#collapsible' => true,
+         '#title' => t('This node is a parent of the checked nodes (uncheck to remove, check to add):'),
+      );
+      $form['node2nodechildren'][] = array(
+         '#value' => '<table><tr><th>'.t('Sequence').'<th>'.t('This node').'<th>'.t('Relationship').'<th>'.t('Child node').'<th>'.t('Type').'<th>'.t('Check'),
+      );
+      $i = 0;
+      foreach ($node->child_nodes as $k=>$cnode) {
+         $form['node2nodechildren']['c_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => $i,
+         );
+         $form['node2nodechildren']['cseq_'.$i] = array(
+            '#prefix' => '<tr><td>',
+            '#type' => 'weight',
+            '#delta' => 100,
+            '#default_value' => $i, //$cnode['seq'],
+            '#suffix' => '</td>',
+         );
+         $form['node2nodechildren'][] = array(
+            '#prefix' => '<td>',
+            '#value' => $node->title,
+            '#suffix' => '</td>',
+         );
+         $form['node2nodechildren'][] = array(
+            '#prefix' => '<td>',
+            '#value' => $cnode['name'],
+            '#suffix' => '</td>',
+         );
+         $form['node2nodechildren'][] = array(
+            '#prefix' => '<td>',
+            '#value' => $cnode['title'],
+            '#suffix' => '</td>',
+         );
+         $form['node2nodechildren'][] = array(
+            '#prefix' => '<td>',
+            '#value' => $cnode['node_type'],
+            '#suffix' => '</td>',
+         );
+         $form['node2nodechildren']['ccheck_'.$i] = array(
+            '#prefix' => '<td>',
+            '#type' => 'checkbox',
+            '#default_value' => !isset($cnode['potential']),
+            '#suffix' => '</td></tr>',
+         );
+         $form['node2nodechildren']['cnid_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => $cnode['child_nid'],
+         );
+         $form['node2nodechildren']['corig_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => !isset($cnode['potential']),
+         );
+         $form['node2nodechildren']['ctype_'.$i] = array(
+            '#type' => 'hidden',
+            '#value' => $cnode['type'],
+         );
+         $i++;
+      }
+      $form['node2nodechildren'][] = array(
+         '#value' => '</table>',
+      );
+   }
+   
+   // add the submit function
+   if ($modded) {
+      $form['#submit'][] = 'node2node_form_submit';
+   }
+}
+
+/* Handle submission of the form data
+*/
+function node2node_form_submit(&$form, &$form_state) {
+   // collects the form data into a cleaned up array to be used by node2node_nodeapi
+   $links = array();
+   $node = $form['#node'];
+   $order = array();
+   foreach ($form_state['values'] as $key=>$value) {
+      switch (substr($key,0,2)) {
+         case 'p_':
+            $links['p'][] = array(
+               'checked' => $form_state['values']['pcheck_'.$value],
+               'pnid' => $form_state['values']['pnid_'.$value],
+               'pseq' => $form_state['values']['pseq_'.$value],
+               'porig' => $form_state['values']['porig_'.$value],
+               'ptype' => $form_state['values']['ptype_'.$value],
+            );
+            break;
+         case 'c_':
+            $links['c'][] = array(
+               'checked' => $form_state['values']['ccheck_'.$value],
+               'cnid' => $form_state['values']['cnid_'.$value],
+               'cseq' => $form_state['values']['cseq_'.$value],
+               'corig' => $form_state['values']['corig_'.$value],
+               'ctype' => $form_state['values']['ctype_'.$value],
+            );
+            break;
+      }
+   }
+   $form_state['values']['links'] = $links;
+}

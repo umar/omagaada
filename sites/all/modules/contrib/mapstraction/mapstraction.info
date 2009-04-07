@@ -1,0 +1,11 @@
+; $Id: mapstraction.info,v 1.1.2.1 2009/02/23 16:54:33 diggersf Exp $
+name = Mapstraction
+core = 6.x
+description = Mapstraction allows you to display maps using a number of different mapping APIs.
+dependencies[] = views
+; Information added by drupal.org packaging script on 2009-03-11
+version = "6.x-1.0"
+core = "6.x"
+project = "mapstraction"
+datestamp = "1236736876"
+

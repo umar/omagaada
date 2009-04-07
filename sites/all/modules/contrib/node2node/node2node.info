@@ -1,0 +1,15 @@
+; $Id$
+name = Node 2 Node
+description = Create associations between nodes
+core = 6.x
+
+acknowledge_developer = Steve Lockwood
+acknowledge_developer_url = http://stevelockwood.net
+acknowledge_project_url = http://drupal.org/project/node2node
+
+; Information added by drupal.org packaging script on 2008-11-15
+version = "6.x-1.2"
+core = "6.x"
+project = "node2node"
+datestamp = "1226769616"
+

@@ -1,0 +1,64 @@
+<?php
+// $Id: umapper.install,v 1.1 2009/03/02 03:01:23 aaronott Exp $
+
+function umapper_schema() {
+  $schema['umapper'] = array(
+    'description' => t('The base table for umapper maps.'),
+    'fields' => array(
+      'id' => array(
+        'description' => t('The identifier for the map. umappers id'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE),
+      'mapTitle' => array(
+        'description' => t('The title of the map'),
+        'type' => 'varchar',
+        'length' => 96,
+        'not null' => TRUE,
+        'default' => ''),
+      'mapDesc' => array(
+        'description' => t('short description of the map'),
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => ''),
+      'dateCreated' => array(
+        'description' => t('Date and time the map was created'),
+        'type' => 'datetime',
+        'not null' => FALSE),
+      'providerId' => array(
+        'description' => t('umapper providerId for the map'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'default' => '0'),
+      'uri' => array(
+        'description' => t('URL to the kml file'),
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => ''),
+      ),
+    'primary key' => array('id'),
+    );
+    
+    return $schema;
+}
+
+function umapper_install() {
+  // Create my tables.
+  drupal_install_schema('umapper');
+  
+  drupal_set_message(t('umapper table has been set up,
+                        you now need to enter <a href="@url">your credentials</a>',
+                        array('@url' => url('admin/settings/umapper'))));
+}
+
+function umapper_uninstall() {
+  // Drop my tables.
+  drupal_uninstall_schema('umapper');
+  
+  // clean up the variables table
+  variable_del('umapper_username');
+  variable_del('umapper_password');
+  variable_del('umapper_apikey');
+}

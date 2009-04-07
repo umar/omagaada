@@ -1,0 +1,213 @@
+<?php
+// $Id: geouser.module,v 1.24 2009/02/26 07:08:35 zidong Exp $
+
+/**
+ * @file
+ * Track user's geographic location
+ * @author Zidong Cai (zidong39 AT gmail.com)
+ */
+
+require_once('geouser.inc');
+
+/**
+ * Implement hook_help()
+ *
+ */
+function geouser_help($path, $arg){
+
+  switch ($path) {
+
+    case 'admin/help#geouser' :
+      $output = '<p>'. t('GeoUser will track user\'s geographic location through their ip address').'</p>';
+      return $output;
+  }
+}
+
+/**
+ * Implement hook_menu()
+ *
+ */
+function geouser_menu(){
+
+  $items = array();
+
+  $items['admin/settings/geouser'] = array(
+		'title'	=> t("GeoUser"),
+		'description' => t("Retrieve user's geographic information based on her ip address, and display a yahoo map on user page."),
+		'page callback'		=> 'drupal_get_form',
+		'page arguments'	=> array('geouser_admin_settings'),
+        'access arguments' => array('administer site configuration'),
+        'type' => MENU_NORMAL_ITEM,
+		'file'		=> 'geouser.admin.inc',
+  );
+
+  $items['geouser'] = array(
+        'title' => t('GeoUser'),
+        'page callback' => 'geouser',
+        'access arguments' => array('view GeoUser List'),
+
+        'file' => 'geouser.pages.inc',
+  );
+
+
+  return $items;
+
+}
+
+/**
+ * Implement hook_user()
+ *
+ */
+function geouser_user($op, &$edit, &$account, $category = NULL){
+
+  global $user;
+
+
+  require_once('GeoIP.php');
+  try{
+    $geo = new Net_GeoIP(variable_get('geouser_db_path','../IPDatabase/GeoLiteCity.dat'));
+     
+  }catch(Exception $e){
+
+    drupal_set_message($e->getMessage(),'error');
+  }
+
+  switch($op){
+     
+    case 'view' :
+      //Check permission of view
+      if(user_access('view geographic information')){
+        $account->content['geouser'] = array(
+                  '#type' => 'user_profile_category',
+                  '#title' => t('Geographic Location'),
+                  '#attributes' => array(
+                  'class' => 'geouser',
+        ),    '#weight' => 8,
+
+        );
+
+        try{
+          $addr = GeoUser::getUserIP($uid = arg(1));
+          $location = GeoUser::getGeoCity($addr);
+          $countryName = $location->countryName;
+          $regionName = GeoUser::getRegionName($location);
+          $cityName = $location->city;
+
+          if($location){
+
+            $account->content['geouser']['city'] = array(
+                  '#type' => 'user_profile_item',
+                  '#title' => t('City'),
+                  '#value' => l($cityName,  'geouser', array('query' => array('Country' => $countryName, 'Region' => $regionName, 'City' => $cityName))),
+                  '#weight' => 7,
+
+            );
+            $account->content['geouser']['region'] = array(
+                  '#title' => t('Region'),
+                  '#value' =>l($regionName, 'geouser', array('query' => array('Country' => $countryName, 'Region' => $regionName))),
+                  '#weight' => 8,
+                  '#type' => 'user_profile_item',
+            );
+            $account->content['geouser']['country'] = array(
+                  '#title' => t('Country'),
+                  '#value' => l($countryName, 'geouser', array('query' => array('Country' => $countryName))),
+                  '#weight' => 9,
+                  '#type' => 'user_profile_item',
+
+            );
+
+            if(variable_get('map_type', 0) == 1){
+              //Display Yahoo Map
+              $appid = variable_get('geouser_ymap_appid','YahooDemo');
+              $latitude = $location->latitude;
+              $longitude = $location->longitude;
+              $imageHeight = variable_get('geouser_ymap_height',350);
+              $imageWidth = variable_get('geouser_ymap_width',550);
+
+              $map = GeoUser::getPngMap($appid, $latitude, $longitude, $imageHeight, $imageWidth);
+              $account->content['geouser']['ymap'] = array(
+                  '#title' => t('Geographic Map'),
+                  '#value' => $map,
+                  '#weight' => 10,
+                  '#type' => 'user_profile_item',
+
+              );
+            }
+
+            if(variable_get('map_type', 0) == 0){
+              //Display Google Map
+              $appid = variable_get('geouser_gmap_appid','');
+              $latitude = $location->latitude;
+              $longitude = $location->longitude;
+              $zoom = variable_get('geouser_gmap_zoom',6);
+              $imageHeight = variable_get('geouser_gmap_height',350);
+              $imageWidth = variable_get('geouser_gmap_width',550);
+
+              $map = GeoUser::getAjaxMap($appid, $latitude, $longitude, $zoom, $imageHeight, $imageWidth);
+              $account->content['geouser']['gmap'] = array(
+                  '#title' => t('Geographic Map'),
+                  '#value' => $map,
+                  '#weight' => 10,
+                  '#type' => 'user_profile_item',
+              );
+            }
+          }
+           
+        }catch(Exception $e){
+
+          drupal_set_message($e->getMessage(),'error');
+        }
+      }
+      break;
+
+    case 'login':
+      // Update user's ip address every time she logs in.
+
+      $location = GeoUser::getGeoCity(ip_address());
+      $countryName = $location->countryName;
+      $regionName = GeoUser::getRegionName($location);
+      $cityName = $location->city;
+       
+      $row = db_affected_rows(db_query("SELECT addr FROM {geouser} WHERE uid = %d", $user->uid));
+      if($row == 0){
+
+        db_query("INSERT INTO {geouser} (uid, addr, country, region, city) VALUES (%d, '%s', '%s' ,'%s', '%s')", $user->uid, ip_address(), $countryName, $regionName, $cityName);
+      }
+      if($row >= 1){
+        db_query("UPDATE {geouser} SET addr = '%s', country = '%s', region = '%s', city = '%s' WHERE uid = %d",ip_address(), $countryName, $regionName, $cityName, $user->uid);
+      }
+      break;
+
+
+
+
+    case 'validate':
+      //Only allow users from admin-defined geographic locations to register.
+      if(GeoUser::checkGeoUserRegisterPermission()){
+
+       //TODO Do something when permission of registration has been granted.
+      }
+      else{
+        drupal_set_message('You are not permitted to register on this site due to the <a href="http://drupal.org/project/geouser" target="_blank">GeoUser</a> settings, please contact the webmaster if there is a mistake.', 'warning');
+        watchdog('geouser', 'Registration rejected due to the GeoUser settings');
+        drupal_goto();
+      }
+      break;
+
+      //Delete data when deleting user
+    case 'delete':
+
+      db_query("DELETE FROM {geouser} WHERE uid = %d",$uid = arg(1));
+      break;
+
+  }
+}
+
+/**
+ * Implement hook_perm()
+ *
+ */
+function geouser_perm(){
+
+  return array('view geographic information', 'view GeoUser List');
+}

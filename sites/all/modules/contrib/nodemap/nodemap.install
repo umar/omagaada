@@ -1,0 +1,100 @@
+<?php
+/**
+ * Implementation of hook_schema(). 
+ */
+function nodemap_schema() {
+	$schema['nodemap'] = array (
+		'description' => t('Node Map table.'),
+		'fields' => array (
+			'nodemap_nid' => array (
+				'description' => t('The node id.'),
+				'type' => 'int',
+				'unsigned' => TRUE,
+				'not null' => TRUE
+			),
+			'nodemap_latitude' => array (
+				'description' => t('The Latitude field.'),
+				'type' => 'float',
+				'size' => 'normal',
+				'precision' => 10,
+				'scale' => 6,
+				'default' => '0.000000',
+				'not null' => TRUE
+			),
+			'nodemap_longitude' => array (
+				'description' => t('The Longitude field.'),
+				'type' => 'float',
+				'size' => 'normal',
+				'precision' => 10,
+				'scale' => 6,
+				'default' => '0.000000',
+				'not null' => TRUE
+			),
+			'nodemap_address' => array (
+				'description' => t('The Address field.'),
+				'type' => 'varchar',
+				'length' => 255,
+				'default' => ''
+			),
+			'nodemap_serialized' => array (
+				'description' => t('The serialized data field.'),
+				'type' => 'text',
+				'size' => 'normal',
+				'default' => ''
+			)
+		),
+		'indexes' => array (
+			'nodemap_lat_lon_index' => array('nodemap_latitude','nodemap_longitude')
+		),
+		'unique keys' => array (
+			'nodemap_nid' => array('nodemap_nid')
+		)
+	);
+	return $schema;
+}
+/**
+ * Implementation of hook_install(). 
+ */
+function nodemap_install() {
+	// Create tables.
+	drupal_install_schema('nodemap');
+	// vars & cache:
+	variable_set('nodemap_yahoo_api_key', '');
+	variable_set('nodemap_google_api_key', '');
+	variable_set('nodemap_use_google_geocode', 0);
+	variable_set('nodemap_enabled_nodetypes', array('story'=>'story'));
+	variable_set('nodemap_container_width', 600);
+	variable_set('nodemap_container_height', 450);
+	variable_set('nodemap_default_map_location', "Atomium Square 1020, Brussels, Belgium");
+	variable_set('nodemap_default_map_zoom_level', 5);
+	variable_set('nodemap_default_map_type', "map");
+	variable_set('nodemap_node_block_view_container_width', 450);
+	variable_set('nodemap_node_block_view_container_height', 300);
+	variable_set('nodemap_node_block_view_default_map_zoom_level', 5);
+	variable_set('nodemap_node_block_view_default_map_type', "map");
+	// clear:
+	cache_clear_all();
+}
+/**
+ * Implementation of hook_uninstall(). 
+ */
+function nodemap_uninstall() {
+	// Remove tables.
+	drupal_uninstall_schema('nodemap');
+	// vars & cache:
+	variable_del('nodemap_yahoo_api_key');
+	variable_del('nodemap_google_api_key');
+	variable_del('nodemap_use_google_geocode');
+	variable_del('nodemap_enabled_nodetypes');
+	variable_del('nodemap_container_width');
+	variable_del('nodemap_container_height');
+	variable_del('nodemap_default_map_location');
+	variable_del('nodemap_default_map_zoom_level');
+	variable_del('nodemap_default_map_type');
+	variable_del('nodemap_node_block_view_container_width');
+	variable_del('nodemap_node_block_view_container_height');
+	variable_del('nodemap_node_block_view_default_map_zoom_level');
+	variable_del('nodemap_node_block_view_default_map_type');
+	// clear:
+	cache_clear_all('variables', 'cache');
+}

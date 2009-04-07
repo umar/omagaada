@@ -1,0 +1,10 @@
+/* $Id: umapper.css,v 1.1.2.1 2009/03/03 13:39:17 aaronott Exp $ */
+#map_editor_container {
+  height: 50em;
+  width: 100%;
+}
+
+#map_view_container {
+  height: 30em;
+  width: 50em;
+}

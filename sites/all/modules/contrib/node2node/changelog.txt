@@ -1,0 +1,6 @@
+DRUPAL-6--1-2
+-------------
+Bug fix to access rights
+
+DRUPAL-6--1-1
+-------------

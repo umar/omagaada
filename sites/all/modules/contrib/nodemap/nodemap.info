@@ -1,0 +1,19 @@
+; $Id$
+name = Node Map
+description = Locates the node on a map provided by !Yahoo maps.
+version = "6.x-1.0"
+core = 6.x
+php = 5.2
+; Information added by drupal.org packaging script on 2008-08-19
+version = "6.x-1.0"
+core = "6.x"
+project = "nodemap"
+datestamp = "1219115713"
+
+
+; Information added by drupal.org packaging script on 2009-01-22
+version = "6.x-1.3"
+core = "6.x"
+project = "nodemap"
+datestamp = "1232666426"
+
